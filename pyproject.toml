@@ -1,0 +1,35 @@
+[project]
+name = "twocrypto-pool"
+version = "0.1.0"
+description = "Installable header-only TwoCrypto pool SDK with private Vyper parity tools"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "titanoboa==0.2.8",
+  "vyper==0.4.3",
+  "snekmate==0.1.2",
+]
+
+[project.optional-dependencies]
+test = ["pytest==8.4.1"]
+
+[project.scripts]
+twocrypto-parity = "twocrypto_parity.numeric_variants:main"
+
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["python"]
+include = ["twocrypto_parity*"]
+
+[tool.setuptools.package-data]
+"twocrypto_parity.vyper_pool" = ["*.vy"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["python"]
+addopts = "-ra"

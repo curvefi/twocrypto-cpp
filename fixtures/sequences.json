@@ -1,0 +1,533 @@
+{
+  "seed": 7,
+  "sequences": [
+    {
+      "name": "default",
+      "start_timestamp": 1700000000,
+      "actions": [
+        {
+          "type": "time_travel",
+          "timestamp": 1700001287
+        },
+        {
+          "type": "exchange",
+          "i": 1,
+          "j": 0,
+          "dx": "4491000000000000000"
+        },
+        {
+          "type": "add_liquidity",
+          "amounts": [
+            "1522000000000000000",
+            "2049000000000000000"
+          ],
+          "donation": false
+        },
+        {
+          "type": "add_liquidity",
+          "amounts": [
+            "6000000000000000",
+            "37000000000000000"
+          ],
+          "donation": true
+        },
+        {
+          "type": "remove_liquidity",
+          "amount": "1736480399999999995",
+          "min_amounts": [
+            "0",
+            "0"
+          ]
+        },
+        {
+          "type": "time_travel",
+          "timestamp": 1700003498
+        },
+        {
+          "type": "add_liquidity",
+          "amounts": [
+            "2863000000000000000",
+            "3726000000000000000"
+          ],
+          "donation": false
+        },
+        {
+          "type": "exchange",
+          "i": 1,
+          "j": 0,
+          "dx": "3773000000000000000"
+        },
+        {
+          "type": "exchange",
+          "i": 1,
+          "j": 0,
+          "dx": "5186000000000000000"
+        },
+        {
+          "type": "exchange",
+          "i": 1,
+          "j": 0,
+          "dx": "4875000000000000000"
+        },
+        {
+          "type": "time_travel",
+          "timestamp": 1700004180
+        },
+        {
+          "type": "remove_liquidity",
+          "amount": "2430645587439999993",
+          "min_amounts": [
+            "0",
+            "0"
+          ]
+        },
+        {
+          "type": "exchange",
+          "i": 1,
+          "j": 0,
+          "dx": "6211000000000000000"
+        },
+        {
+          "type": "exchange",
+          "i": 1,
+          "j": 0,
+          "dx": "5759000000000000000"
+        },
+        {
+          "type": "add_liquidity",
+          "amounts": [
+            "2620000000000000000",
+            "2836000000000000000"
+          ],
+          "donation": false
+        },
+        {
+          "type": "time_travel",
+          "timestamp": 1700007087
+        },
+        {
+          "type": "exchange",
+          "i": 1,
+          "j": 0,
+          "dx": "5508000000000000000"
+        },
+        {
+          "type": "add_liquidity",
+          "amounts": [
+            "3787000000000000000",
+            "613000000000000000"
+          ],
+          "donation": false
+        },
+        {
+          "type": "add_liquidity",
+          "amounts": [
+            "18000000000000000",
+            "31000000000000000"
+          ],
+          "donation": true
+        },
+        {
+          "type": "add_liquidity",
+          "amounts": [
+            "5000000000000000",
+            "4000000000000000"
+          ],
+          "donation": true
+        },
+        {
+          "type": "time_travel",
+          "timestamp": 1700010141
+        },
+        {
+          "type": "add_liquidity",
+          "amounts": [
+            "42000000000000000",
+            "37000000000000000"
+          ],
+          "donation": true
+        },
+        {
+          "type": "remove_liquidity",
+          "amount": "2603041911018839992",
+          "min_amounts": [
+            "0",
+            "0"
+          ]
+        },
+        {
+          "type": "exchange",
+          "i": 1,
+          "j": 0,
+          "dx": "5054000000000000000"
+        },
+        {
+          "type": "remove_liquidity",
+          "amount": "2079309878521849386",
+          "min_amounts": [
+            "0",
+            "0"
+          ]
+        },
+        {
+          "type": "time_travel",
+          "timestamp": 1700010293
+        },
+        {
+          "type": "remove_liquidity",
+          "amount": "2076814706667623166",
+          "min_amounts": [
+            "0",
+            "0"
+          ]
+        },
+        {
+          "type": "exchange",
+          "i": 1,
+          "j": 0,
+          "dx": "3953000000000000000"
+        },
+        {
+          "type": "add_liquidity",
+          "amounts": [
+            "1837000000000000000",
+            "2404000000000000000"
+          ],
+          "donation": false
+        },
+        {
+          "type": "exchange",
+          "i": 1,
+          "j": 0,
+          "dx": "4488000000000000000"
+        },
+        {
+          "type": "time_travel",
+          "timestamp": 1700011982
+        },
+        {
+          "type": "exchange",
+          "i": 0,
+          "j": 1,
+          "dx": "5554000000000000000"
+        },
+        {
+          "type": "exchange",
+          "i": 0,
+          "j": 1,
+          "dx": "5360000000000000000"
+        },
+        {
+          "type": "exchange",
+          "i": 0,
+          "j": 1,
+          "dx": "4659000000000000000"
+        },
+        {
+          "type": "remove_liquidity",
+          "amount": "2421328850522892355",
+          "min_amounts": [
+            "0",
+            "0"
+          ]
+        },
+        {
+          "type": "time_travel",
+          "timestamp": 1700015580
+        },
+        {
+          "type": "add_liquidity",
+          "amounts": [
+            "3452000000000000000",
+            "2989000000000000000"
+          ],
+          "donation": false
+        },
+        {
+          "type": "add_liquidity",
+          "amounts": [
+            "25000000000000000",
+            "15000000000000000"
+          ],
+          "donation": true
+        },
+        {
+          "type": "exchange",
+          "i": 0,
+          "j": 1,
+          "dx": "4242000000000000000"
+        },
+        {
+          "type": "exchange",
+          "i": 0,
+          "j": 1,
+          "dx": "6218000000000000000"
+        },
+        {
+          "type": "time_travel",
+          "timestamp": 1700016595
+        },
+        {
+          "type": "exchange",
+          "i": 0,
+          "j": 1,
+          "dx": "6925000000000000000"
+        },
+        {
+          "type": "add_liquidity",
+          "amounts": [
+            "2202000000000000000",
+            "2359000000000000000"
+          ],
+          "donation": false
+        },
+        {
+          "type": "exchange",
+          "i": 0,
+          "j": 1,
+          "dx": "5237000000000000000"
+        },
+        {
+          "type": "add_liquidity",
+          "amounts": [
+            "4689000000000000000",
+            "2660000000000000000"
+          ],
+          "donation": false
+        },
+        {
+          "type": "time_travel",
+          "timestamp": 1700017169
+        },
+        {
+          "type": "add_liquidity",
+          "amounts": [
+            "33000000000000000",
+            "40000000000000000"
+          ],
+          "donation": true
+        },
+        {
+          "type": "add_liquidity",
+          "amounts": [
+            "492000000000000000",
+            "3790000000000000000"
+          ],
+          "donation": false
+        },
+        {
+          "type": "remove_liquidity",
+          "amount": "4328176946664571975",
+          "min_amounts": [
+            "0",
+            "0"
+          ]
+        },
+        {
+          "type": "remove_liquidity",
+          "amount": "3799273723782161279",
+          "min_amounts": [
+            "0",
+            "0"
+          ]
+        },
+        {
+          "type": "time_travel",
+          "timestamp": 1700020497
+        },
+        {
+          "type": "add_liquidity",
+          "amounts": [
+            "3310000000000000000",
+            "3318000000000000000"
+          ],
+          "donation": false
+        },
+        {
+          "type": "exchange",
+          "i": 0,
+          "j": 1,
+          "dx": "5493000000000000000"
+        },
+        {
+          "type": "add_liquidity",
+          "amounts": [
+            "559000000000000000",
+            "1611000000000000000"
+          ],
+          "donation": false
+        },
+        {
+          "type": "exchange",
+          "i": 0,
+          "j": 1,
+          "dx": "4376000000000000000"
+        },
+        {
+          "type": "time_travel",
+          "timestamp": 1700022361
+        },
+        {
+          "type": "exchange",
+          "i": 0,
+          "j": 1,
+          "dx": "4913000000000000000"
+        },
+        {
+          "type": "add_liquidity",
+          "amounts": [
+            "888000000000000000",
+            "51000000000000000"
+          ],
+          "donation": false
+        },
+        {
+          "type": "add_liquidity",
+          "amounts": [
+            "4445000000000000000",
+            "881000000000000000"
+          ],
+          "donation": false
+        },
+        {
+          "type": "remove_liquidity",
+          "amount": "3451087655990764113",
+          "min_amounts": [
+            "0",
+            "0"
+          ]
+        },
+        {
+          "type": "time_travel",
+          "timestamp": 1700022525
+        },
+        {
+          "type": "exchange",
+          "i": 1,
+          "j": 0,
+          "dx": "4325000000000000000"
+        },
+        {
+          "type": "add_liquidity",
+          "amounts": [
+            "1266000000000000000",
+            "2116000000000000000"
+          ],
+          "donation": false
+        },
+        {
+          "type": "remove_liquidity",
+          "amount": "3445451480678782585",
+          "min_amounts": [
+            "0",
+            "0"
+          ]
+        },
+        {
+          "type": "exchange",
+          "i": 1,
+          "j": 0,
+          "dx": "3977000000000000000"
+        },
+        {
+          "type": "time_travel",
+          "timestamp": 1700023057
+        },
+        {
+          "type": "add_liquidity",
+          "amounts": [
+            "30000000000000000",
+            "31000000000000000"
+          ],
+          "donation": true
+        },
+        {
+          "type": "add_liquidity",
+          "amounts": [
+            "753000000000000000",
+            "1230000000000000000"
+          ],
+          "donation": false
+        },
+        {
+          "type": "exchange",
+          "i": 1,
+          "j": 0,
+          "dx": "4877000000000000000"
+        },
+        {
+          "type": "add_liquidity",
+          "amounts": [
+            "31000000000000000",
+            "45000000000000000"
+          ],
+          "donation": true
+        },
+        {
+          "type": "time_travel",
+          "timestamp": 1700023778
+        },
+        {
+          "type": "add_liquidity",
+          "amounts": [
+            "1731000000000000000",
+            "4377000000000000000"
+          ],
+          "donation": false
+        },
+        {
+          "type": "exchange",
+          "i": 1,
+          "j": 0,
+          "dx": "6300000000000000000"
+        },
+        {
+          "type": "add_liquidity",
+          "amounts": [
+            "271000000000000000",
+            "4376000000000000000"
+          ],
+          "donation": false
+        },
+        {
+          "type": "exchange",
+          "i": 1,
+          "j": 0,
+          "dx": "6107000000000000000"
+        },
+        {
+          "type": "time_travel",
+          "timestamp": 1700027374
+        },
+        {
+          "type": "exchange",
+          "i": 1,
+          "j": 0,
+          "dx": "6936000000000000000"
+        },
+        {
+          "type": "exchange",
+          "i": 1,
+          "j": 0,
+          "dx": "4976000000000000000"
+        },
+        {
+          "type": "remove_liquidity",
+          "amount": "2064789346630455012",
+          "min_amounts": [
+            "0",
+            "0"
+          ]
+        },
+        {
+          "type": "add_liquidity",
+          "amounts": [
+            "35000000000000000",
+            "35000000000000000"
+          ],
+          "donation": true
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "seed": 7,
+  "sequence": {
+    "name": "failed_action_atomicity",
+    "start_timestamp": 1700000000,
+    "actions": [
+      {
+        "type": "unsupported_action"
+      }
+    ],
+    "expected_failed_action_index": 1
+  }
+}

@@ -9,8 +9,9 @@ namespace pools {
 namespace twocrypto_fx {
 
 template <typename T>
-struct CompiledPolicy {
+struct ChallengeFeePolicy {
     static constexpr const char* NAME = "test_fixture_policy";
+    static constexpr std::size_t PARAM_COUNT = 1;
 
     struct State {
         uint64_t step_count{0};

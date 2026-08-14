@@ -4,7 +4,8 @@
 //
 //   -DTWOCRYPTO_POLICY_HEADER="/abs/path/to/policy.hpp"
 //
-// That header defines `CompiledPolicy<T>` in this namespace. Targets built
+// That header defines the source contract's `ChallengeFeePolicy<T>` in this
+// namespace. Targets built
 // without a selected header use the native passthrough below. A compiled
 // policy may override the fee and price-scale target while the pool retains
 // all clamping, step limiting, LP protection, and rollback semantics.

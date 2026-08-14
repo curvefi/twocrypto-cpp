@@ -31,6 +31,7 @@ struct HistoricalState {
 
     std::array<uint256, 2> balances{uint256(0), uint256(0)};
     std::array<uint256, 2> admin_balances{uint256(0), uint256(0)};
+    uint64_t last_admin_fee_claim_timestamp{0};
     uint256 D{uint256(0)};
     uint256 total_supply{uint256(0)};
     uint256 price_scale{uint256(0)};
@@ -80,7 +81,15 @@ struct Action {
     int64_t seconds{0};
     int64_t timestamp{0};
     std::string dx;
+    std::string dy;
+    std::string min_dy{"0"};
+    std::string min_mint_amount{"0"};
     std::string amount;
+    std::string token_amount;
+    std::string amount_i;
+    std::string min_amount_j{"0"};
+    std::string min_amount{"0"};
+    int64_t n_iter{5};
     std::array<std::string, 2> amounts{};
     std::array<std::string, 2> min_amounts{};
     bool has_seconds{false};
@@ -242,6 +251,9 @@ HistoricalState parse_historical_state(const json::value& value) {
 
     state.balances = parse_pair("balances");
     state.admin_balances = parse_pair("admin_balances");
+    state.last_admin_fee_claim_timestamp = get_u64_opt(
+        object, "last_admin_fee_claim_timestamp", 0
+    );
     state.D = parse_historical_wad(required_value(object, "D"));
     state.total_supply = parse_historical_wad(required_value(object, "total_supply"));
     state.price_scale = parse_historical_wad(required_value(object, "price_scale"));
@@ -393,6 +405,7 @@ TwoCryptoPool<uint256> make_pool(const PoolConfig& config, const ActionSequence&
         const auto& state = config.historical_state;
         pool.balances = state.balances;
         pool.admin_balances = state.admin_balances;
+        pool.last_admin_fee_claim_timestamp = state.last_admin_fee_claim_timestamp;
         pool.D = state.D;
         pool.totalSupply = state.total_supply;
         pool.cached_price_scale = state.price_scale;
@@ -459,6 +472,10 @@ inline Action parse_action(const json::value& value) {
             action.i = required_i64(object, "i");
             action.j = required_i64(object, "j");
             action.dx = get_str(object, "dx");
+            if (auto* value = object.if_contains("min_dy")) {
+                require_scalar(*value, "min_dy");
+                action.min_dy = scalar_to_string(*value);
+            }
         } else if (action.type == "add_liquidity") {
             action.amounts = required_string_pair(object, "amounts");
             action.has_amounts = true;
@@ -466,11 +483,41 @@ inline Action parse_action(const json::value& value) {
                 if (!donation->is_bool()) throw std::runtime_error("expected bool for key: donation");
                 action.donation = donation->as_bool();
             }
+            if (auto* value = object.if_contains("min_mint_amount")) {
+                require_scalar(*value, "min_mint_amount");
+                action.min_mint_amount = scalar_to_string(*value);
+            }
         } else if (action.type == "remove_liquidity") {
             action.amount = get_str(object, "amount");
             if (object.if_contains("min_amounts") != nullptr) {
                 action.min_amounts = required_string_pair(object, "min_amounts");
                 action.has_min_amounts = true;
+            }
+        } else if (action.type == "remove_liquidity_fixed_out") {
+            action.token_amount = get_str(object, "token_amount");
+            action.i = required_i64(object, "i");
+            action.amount_i = get_str(object, "amount_i");
+            if (auto* value = object.if_contains("min_amount_j")) {
+                require_scalar(*value, "min_amount_j");
+                action.min_amount_j = scalar_to_string(*value);
+            }
+        } else if (action.type == "remove_liquidity_one_coin") {
+            action.token_amount = get_str(object, "token_amount");
+            action.i = required_i64(object, "i");
+            if (auto* value = object.if_contains("min_amount")) {
+                require_scalar(*value, "min_amount");
+                action.min_amount = scalar_to_string(*value);
+            }
+        } else if (action.type == "get_dy") {
+            action.i = required_i64(object, "i");
+            action.j = required_i64(object, "j");
+            action.dx = get_str(object, "dx");
+        } else if (action.type == "get_dx") {
+            action.i = required_i64(object, "i");
+            action.j = required_i64(object, "j");
+            action.dy = get_str(object, "dy");
+            if (object.if_contains("n_iter")) {
+                action.n_iter = required_i64(object, "n_iter");
             }
         } else if (action.type == "time_travel") {
             if (object.if_contains("seconds")) {

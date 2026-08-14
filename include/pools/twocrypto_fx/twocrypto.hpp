@@ -235,6 +235,7 @@ public:
     T lp_xcp_profit = Traits::PRECISION();
     T virtual_price = Traits::PRECISION();
     std::array<T, 2> admin_balances{Traits::ZERO(), Traits::ZERO()};
+    uint64_t last_admin_fee_claim_timestamp = 0;
 
     // Token precisions
     std::array<T, 2> precisions{Traits::ONE(), Traits::ONE()};
@@ -271,6 +272,7 @@ public:
         T lp_xcp_profit{};
         T virtual_price{};
         std::array<T, 2> admin_balances{};
+        uint64_t last_admin_fee_claim_timestamp{0};
 
         uint64_t block_timestamp{0};
 
@@ -299,6 +301,7 @@ public:
         snapshot.lp_xcp_profit = lp_xcp_profit;
         snapshot.virtual_price = virtual_price;
         snapshot.admin_balances = admin_balances;
+        snapshot.last_admin_fee_claim_timestamp = last_admin_fee_claim_timestamp;
         snapshot.block_timestamp = block_timestamp;
         snapshot.donation_shares = donation_shares;
         snapshot.last_donation_release_ts = last_donation_release_ts;
@@ -325,6 +328,7 @@ public:
         lp_xcp_profit = snapshot.lp_xcp_profit;
         virtual_price = snapshot.virtual_price;
         admin_balances = snapshot.admin_balances;
+        last_admin_fee_claim_timestamp = snapshot.last_admin_fee_claim_timestamp;
         block_timestamp = snapshot.block_timestamp;
         donation_shares = snapshot.donation_shares;
         last_donation_release_ts = snapshot.last_donation_release_ts;
@@ -334,6 +338,40 @@ public:
         policy.restore_mutable(snapshot.policy);
         policy_hook_metrics = snapshot.policy_hook_metrics;
     }
+
+private:
+    void _claim_admin_fees() {
+        // The product factory always has a non-zero fee receiver.  Token
+        // transfers are outside the simulator's accounting boundary: the
+        // balances were reduced when the fees accrued, so claiming only clears
+        // the cached admin balances and advances the claim timestamp.
+        constexpr uint64_t MIN_ADMIN_FEE_CLAIM_INTERVAL = 86400;
+        if (block_timestamp < last_admin_fee_claim_timestamp ||
+            block_timestamp - last_admin_fee_claim_timestamp <
+                MIN_ADMIN_FEE_CLAIM_INTERVAL) {
+            return;
+        }
+        if (admin_balances[0] == Traits::ZERO() &&
+            admin_balances[1] == Traits::ZERO()) {
+            return;
+        }
+        admin_balances = {Traits::ZERO(), Traits::ZERO()};
+        last_admin_fee_claim_timestamp = block_timestamp;
+    }
+
+    template <typename Mutation>
+    auto with_mutable_rollback(Mutation&& mutation)
+        -> decltype(std::forward<Mutation>(mutation)()) {
+        const MutableSnapshot before = mutable_snapshot();
+        try {
+            return std::forward<Mutation>(mutation)();
+        } catch (...) {
+            restore_mutable(before);
+            throw;
+        }
+    }
+
+public:
 
     bool quote_cache_safe() const {
         return policy.quote_cache_safe();
@@ -996,6 +1034,48 @@ private:
         DeferredPolicyUpdate* deferred_policy_update = nullptr,
         bool proportional_search = false
     ) {
+        const MutableSnapshot before = mutable_snapshot();
+        T local_charged_lp_fee = Traits::ZERO();
+        DeferredPolicyUpdate local_deferred_policy_update{};
+        try {
+            auto result = add_liquidity_unchecked(
+                amounts,
+                min_mint_amount,
+                donation,
+                charged_lp_fee != nullptr ? &local_charged_lp_fee : nullptr,
+                rejection_out,
+                policy_target_override,
+                deferred_policy_update != nullptr
+                    ? &local_deferred_policy_update : nullptr,
+                proportional_search
+            );
+            if (!result.has_value()) {
+                restore_mutable(before);
+                return std::nullopt;
+            }
+            if (charged_lp_fee != nullptr) {
+                *charged_lp_fee = local_charged_lp_fee;
+            }
+            if (deferred_policy_update != nullptr) {
+                *deferred_policy_update = local_deferred_policy_update;
+            }
+            return result;
+        } catch (...) {
+            restore_mutable(before);
+            throw;
+        }
+    }
+
+    std::optional<T> add_liquidity_unchecked(
+        const std::array<T, 2>& amounts,
+        T min_mint_amount,
+        bool donation,
+        T* charged_lp_fee,
+        std::string* rejection_out,
+        const T* policy_target_override,
+        DeferredPolicyUpdate* deferred_policy_update = nullptr,
+        bool proportional_search = false
+    ) {
         if (amounts[0] + amounts[1] == Traits::ZERO()) {
             throw std::invalid_argument("no coins to add");
         }
@@ -1177,6 +1257,70 @@ private:
 
 public:
 
+    // Exact read-only mirrors of TwocryptoView.get_dy/get_dx for the current
+    // non-ramping simulator state.
+    T get_dy(size_t idx_i, size_t idx_j, const T& dx) const {
+        if (idx_i == idx_j || idx_i >= N_COINS || idx_j >= N_COINS) {
+            throw std::invalid_argument("coin index out of range");
+        }
+        if (!(dx > Traits::ZERO())) {
+            throw std::invalid_argument("do not exchange 0 coins");
+        }
+
+        const T price_scale = cached_price_scale;
+        std::array<T, 2> raw_balances = balances;
+        raw_balances[idx_i] += dx;
+        auto xp = _xp(raw_balances, price_scale);
+        const T y = Ops::get_y_unchecked(A, gamma, xp, D, idx_j);
+        if (y >= xp[idx_j]) {
+            throw std::runtime_error("unsafe value for y");
+        }
+        T dy = xp[idx_j] - y - Traits::ROUNDING_UNIT_XP();
+        xp[idx_j] = y;
+        if (idx_j > 0) {
+            dy = dy * Traits::PRECISION() / price_scale;
+        }
+        dy /= precisions[idx_j];
+        return dy - _fee(xp) * dy / Traits::FEE_PRECISION();
+    }
+
+    T get_dx(size_t idx_i, size_t idx_j, const T& dy, size_t n_iter = 5) const {
+        if (idx_i == idx_j || idx_i >= N_COINS || idx_j >= N_COINS) {
+            throw std::invalid_argument("coin index out of range");
+        }
+        if (!(dy > Traits::ZERO())) {
+            throw std::invalid_argument("do not exchange out 0 coins");
+        }
+        if (n_iter > 100) {
+            throw std::invalid_argument("get_dx iteration bound exceeded");
+        }
+
+        const T price_scale = cached_price_scale;
+        T dy_with_fee = dy;
+        T dx = Traits::ZERO();
+        for (size_t iteration = 0; iteration < n_iter; ++iteration) {
+            std::array<T, 2> raw_balances = balances;
+            if (raw_balances[idx_j] < dy_with_fee) {
+                throw std::runtime_error("insufficient output balance");
+            }
+            raw_balances[idx_j] -= dy_with_fee;
+            auto xp = _xp(raw_balances, price_scale);
+            const T x = Ops::get_y_unchecked(A, gamma, xp, D, idx_i);
+            if (x < xp[idx_i]) {
+                throw std::runtime_error("unsafe value for x");
+            }
+            dx = x - xp[idx_i];
+            xp[idx_i] = x;
+            if (idx_i > 0) {
+                dx = dx * Traits::PRECISION() / price_scale;
+            }
+            dx /= precisions[idx_i];
+            const T fee_dy = _fee(xp) * dy_with_fee / Traits::FEE_PRECISION();
+            dy_with_fee = dy + fee_dy + Traits::ONE();
+        }
+        return dx;
+    }
+
     // remove_liquidity: burn LP to withdraw proportionally (no fees, no
     // tweak_price - mirrors vy's math-free safe withdrawal)
     std::array<T, 2> remove_liquidity(
@@ -1249,6 +1393,7 @@ public:
     ) {
         const MutableSnapshot before = mutable_snapshot();
         try {
+            _claim_admin_fees();
             if (idx_i >= N_COINS) {
                 throw std::invalid_argument("coin index out of range");
             }
@@ -1328,7 +1473,6 @@ public:
                 * _xcp(D_preop, price_scale) / token_supply;
             const T d_token_fee = approx_fee * token_amount
                 / Traits::FEE_PRECISION() + Traits::ROUNDING_UNIT_XP();
-            if (charged_lp_fee != nullptr) *charged_lp_fee = d_token_fee;
 
             auto local_balances = balances;
             if (local_balances[idx_i] < amount_i || local_balances[idx_j] < dy) {
@@ -1357,6 +1501,7 @@ public:
                 A_gamma, xp_commit, D_commit, vp_preop
             );
             balances = local_balances;
+            if (charged_lp_fee != nullptr) *charged_lp_fee = d_token_fee;
             return dy;
         } catch (...) {
             restore_mutable(before);
@@ -1371,6 +1516,7 @@ public:
         T dx,
         T min_dy
     ) {
+        return with_mutable_rollback([&]() -> std::array<T, 3> {
         size_t idx_i = static_cast<size_t>(i);
         size_t idx_j = static_cast<size_t>(j);
 
@@ -1434,6 +1580,7 @@ public:
         }
         T new_price_scale = tweak_price(A_gamma, xp_new, D_new, vp_preop);
         return { dy, fee, new_price_scale };
+        });
     }
 
     // Floating arb fast path: commit an exchange whose winning preview was
@@ -1445,6 +1592,7 @@ public:
         T dy_after_fee,
         T fee
     ) {
+        return with_mutable_rollback([&]() -> std::array<T, 3> {
         static_assert(std::is_floating_point_v<T>, "exchange_from_preview is floating-only");
 
         T price_scale = cached_price_scale;
@@ -1471,6 +1619,7 @@ public:
         }
         T new_price_scale = tweak_price(A_gamma, xp_new, D_new, vp_preop);
         return { dy_after_fee, fee, new_price_scale };
+        });
     }
 
     // Mirrors vy tweak_price(A_gamma, _xp, D, vp_preop). Locals that shadow

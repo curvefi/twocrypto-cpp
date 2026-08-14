@@ -16,7 +16,7 @@ STATE_FIELDS = (
     "balances", "admin_balances", "xp", "D", "virtual_price", "xcp_profit",
     "lp_xcp_profit", "price_scale", "price_oracle", "last_prices", "totalSupply",
     "donation_shares", "donation_shares_unlocked", "donation_protection_expiry_ts",
-    "timestamp",
+    "last_admin_fee_claim_timestamp", "timestamp",
 )
 
 
@@ -58,17 +58,40 @@ def _pool(name: str, policy_kind: str) -> dict:
 
 def _sequence() -> dict:
     wad = "1000000000000000000"
+    impossible = str(2**256 - 1)
     return {
         "seed": 7,
         "sequences": [{
             "name": "fxswap_ext_fee_exact_core_actions",
             "start_timestamp": 1700000000,
             "actions": [
+                {"type": "get_dy", "i": 0, "j": 1, "dx": wad},
+                {"type": "get_dx", "i": 0, "j": 1, "dy": "500000000000000000", "n_iter": 5},
                 {"type": "exchange", "i": 0, "j": 1, "dx": wad},
+                {"type": "exchange", "i": 1, "j": 0, "dx": wad, "min_dy": impossible},
                 {"type": "add_liquidity", "amounts": [wad, wad]},
+                {"type": "add_liquidity", "amounts": [wad, "0"], "min_mint_amount": impossible},
                 {"type": "add_liquidity", "amounts": [wad, wad], "donation": True},
-                {"type": "remove_liquidity", "amount": wad, "min_amounts": ["0", "0"]},
+                {
+                    "type": "add_liquidity",
+                    "amounts": ["1000000000000000000000000", "1000000000000000000000000"],
+                    "donation": True,
+                },
                 {"type": "time_travel", "seconds": 3600},
+                {
+                    "type": "remove_liquidity_fixed_out",
+                    "token_amount": "100000000000000000000",
+                    "i": 0,
+                    "amount_i": "10000000000000000000",
+                    "min_amount_j": "0",
+                },
+                {
+                    "type": "remove_liquidity_one_coin",
+                    "token_amount": "100000000000000000000",
+                    "i": 1,
+                    "min_amount": "0",
+                },
+                {"type": "remove_liquidity", "amount": wad, "min_amounts": ["0", "0"]},
                 {"type": "unsupported_action"},
             ],
         }],
@@ -117,6 +140,14 @@ def _assert_state_equal(
             "pool": pool_name, "action_idx": action_idx, "action": action,
             "cpp": cpp.get("action_success"), "boa": boa.get("action_success"),
         }
+        if cpp.get("action_success"):
+            assert cpp.get("action_result") == boa.get("action_result"), {
+                "pool": pool_name,
+                "action_idx": action_idx,
+                "action": action,
+                "cpp_result": cpp.get("action_result"),
+                "boa_result": boa.get("action_result"),
+            }
     assert not mismatches, {
         "pool": pool_name, "action_idx": action_idx, "action": action,
         "previous_cpp": prev_cpp, "previous_boa": prev_boa,

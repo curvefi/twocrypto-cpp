@@ -53,7 +53,7 @@ bool cacheable = pool.quote_cache_safe();
 
 ## Private compiled-policy extension
 
-`PolicyKind::Compiled` is a final-executable extension point. A final executable may define `TWOCRYPTO_POLICY_HEADER` to a regular header that provides `CompiledPolicy<T>` in `arb::pools::twocrypto_fx`. The pool retains clamping, step limiting, LP protection, rollback, and actuator authority. Without a selected header, `pools/twocrypto_fx/policies/compiled_passthrough.hpp` delegates to native surfaces.
+`PolicyKind::Compiled` is a final-executable extension point. A final executable may define `TWOCRYPTO_POLICY_HEADER` to a regular header that provides the source contract's `ChallengeFeePolicy<T>` in `arb::pools::twocrypto_fx`. The pool retains clamping, step limiting, LP protection, rollback, and actuator authority. Without a selected header, `pools/twocrypto_fx/policies/compiled_passthrough.hpp` delegates to native surfaces.
 
 For the private exact-integer parity harness, configure the committed deterministic policy fixture and its digest:
 
@@ -61,7 +61,7 @@ For the private exact-integer parity harness, configure the committed determinis
 cmake -S . -B build/policy -DCMAKE_BUILD_TYPE=Release \
   -DTWOCRYPTO_POOL_BUILD_BENCHMARKS=ON \
   -DTWOCRYPTO_POOL_POLICY_PATH="$PWD/fixtures/test_compiled_policy.hpp" \
-  -DTWOCRYPTO_POOL_POLICY_SHA256=6351532280ec1a51aa753bcf80b0883a3105b8c1210e3b348d8599497ef763ee
+  -DTWOCRYPTO_POOL_POLICY_SHA256=18fdfe021e6029b4b3f744c07867cdd031024249c268501667882d556121acf8
 cmake --build build/policy --target benchmark_harness_i --parallel
 ```
 

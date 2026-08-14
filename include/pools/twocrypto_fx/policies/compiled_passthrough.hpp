@@ -1,7 +1,7 @@
 // Default compiled policy: native passthrough.
 //
 // This is the canonical fixed-policy interface. A repository-owned policy
-// header defines the same `CompiledPolicy<T>` struct and static methods.
+// header defines the same `ChallengeFeePolicy<T>` struct and static methods.
 // Returning zero from get_fee and get_price_scale delegates to the native
 // fee surface and native price-scale target.
 #pragma once
@@ -15,7 +15,9 @@ namespace pools {
 namespace twocrypto_fx {
 
 template <typename T>
-struct CompiledPolicy {
+struct ChallengeFeePolicy {
+    static constexpr std::size_t PARAM_COUNT = 0;
+
     static constexpr const char* NAME = "native_passthrough";
 
     // Value-semantic per-pool state; copied by pool transaction snapshots.

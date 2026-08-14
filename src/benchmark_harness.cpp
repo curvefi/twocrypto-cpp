@@ -63,6 +63,7 @@ json::object snapshot_pool(const TwoCryptoPool<uint256>& pool) {
         to_wei_string(pool.admin_balances[0]),
         to_wei_string(pool.admin_balances[1])
     };
+    o["last_admin_fee_claim_timestamp"] = pool.last_admin_fee_claim_timestamp;
     o["price_scale"] = to_wei_string(pool.cached_price_scale);
     o["price_oracle"] = to_wei_string(pool.cached_price_oracle);
     o["last_prices"] = to_wei_string(pool.last_prices);
@@ -78,7 +79,7 @@ json::object snapshot_pool(const TwoCryptoPool<uint256>& pool) {
     return o;
 }
 
-void execute_action(TwoCryptoPool<uint256>& pool, const Action& action) {
+std::string execute_action(TwoCryptoPool<uint256>& pool, const Action& action) {
     if (!action.is_object) {
         throw std::runtime_error(action.parse_error);
     }
@@ -86,15 +87,18 @@ void execute_action(TwoCryptoPool<uint256>& pool, const Action& action) {
         throw std::runtime_error(action.parse_error);
     }
     if (action.type == "exchange") {
-        (void)pool.exchange(
-            uint256(action.i), uint256(action.j), parse_wad(action.dx), PoolTraits<uint256>::ZERO()
+        const auto result = pool.exchange(
+            uint256(action.i), uint256(action.j), parse_wad(action.dx),
+            parse_wad(action.min_dy)
         );
+        return to_int_string(result[0]);
     } else if (action.type == "add_liquidity") {
         const std::array<uint256, 2> amounts = {
             parse_wad(action.amounts[0]),
             parse_wad(action.amounts[1]),
         };
-        (void)pool.add_liquidity(amounts, PoolTraits<uint256>::ZERO(), action.donation);
+        return to_int_string(pool.add_liquidity(
+            amounts, parse_wad(action.min_mint_amount), action.donation));
     } else if (action.type == "remove_liquidity") {
         std::array<uint256, 2> min_amounts{PoolTraits<uint256>::ZERO(), PoolTraits<uint256>::ZERO()};
         if (action.has_min_amounts) {
@@ -103,7 +107,41 @@ void execute_action(TwoCryptoPool<uint256>& pool, const Action& action) {
                 parse_wad(action.min_amounts[1]),
             };
         }
-        (void)pool.remove_liquidity(parse_wad(action.amount), min_amounts);
+        const auto result = pool.remove_liquidity(parse_wad(action.amount), min_amounts);
+        return to_int_string(result[0]) + "," + to_int_string(result[1]);
+    } else if (action.type == "remove_liquidity_fixed_out") {
+        return to_int_string(pool.remove_liquidity_fixed_out(
+            parse_wad(action.token_amount),
+            static_cast<size_t>(action.i),
+            parse_wad(action.amount_i),
+            parse_wad(action.min_amount_j)
+        ));
+    } else if (action.type == "remove_liquidity_one_coin") {
+        if (action.i < 0 || action.i > 1) {
+            throw std::invalid_argument("coin index out of range");
+        }
+        return to_int_string(pool.remove_liquidity_fixed_out(
+            parse_wad(action.token_amount),
+            static_cast<size_t>(1 - action.i),
+            PoolTraits<uint256>::ZERO(),
+            parse_wad(action.min_amount)
+        ));
+    } else if (action.type == "get_dy") {
+        return to_int_string(pool.get_dy(
+            static_cast<size_t>(action.i),
+            static_cast<size_t>(action.j),
+            parse_wad(action.dx)
+        ));
+    } else if (action.type == "get_dx") {
+        if (action.n_iter < 0) {
+            throw std::invalid_argument("n_iter must be nonnegative");
+        }
+        return to_int_string(pool.get_dx(
+            static_cast<size_t>(action.i),
+            static_cast<size_t>(action.j),
+            parse_wad(action.dy),
+            static_cast<size_t>(action.n_iter)
+        ));
     } else if (action.type == "time_travel") {
         if (action.has_seconds) {
             if (action.seconds > 0) {
@@ -112,6 +150,7 @@ void execute_action(TwoCryptoPool<uint256>& pool, const Action& action) {
         } else if (action.has_timestamp) {
             pool.set_block_timestamp(static_cast<uint64_t>(action.timestamp));
         }
+        return "";
     } else {
         throw std::runtime_error("unknown action type: " + action.type);
     }
@@ -144,13 +183,14 @@ json::object run_one_pool(
     for (size_t action_idx = 0; action_idx < actions.size(); ++action_idx) {
         bool success = true;
         std::string err;
+        std::string action_result;
 
         // Vyper/boa reverts are transaction-atomic.  Keep the pool's opaque
         // mutable state separate from its immutable configuration.
         const auto pre_action_state = pool.mutable_snapshot();
 
         try {
-            execute_action(pool, actions[action_idx]);
+            action_result = execute_action(pool, actions[action_idx]);
         } catch (const std::exception& error) {
             success = false;
             err = error.what();
@@ -164,6 +204,9 @@ json::object run_one_pool(
         if (snapshot_every != 0) {
             json::object state = snapshot_pool(pool);
             state["action_success"] = success;
+            if (success && !action_result.empty()) {
+                state["action_result"] = action_result;
+            }
             if (!success) {
                 state["error"] = err;
             }

@@ -148,7 +148,7 @@ public:
     typename FixedFeePolicy<T>::State fixed_state{};
     typename NativeFeePolicy<T>::State native_state{};
     typename OracleX2SequentialFeePolicy<T>::State sequence_state{};
-    typename CompiledPolicy<T>::State compiled_state{};
+    typename ChallengeFeePolicy<T>::State compiled_state{};
 
     // Transaction-preview rollback needs only the mutable policy surface.
     // PolicyConfig owns a 1024-element parameter array and PolicyPoolConfig is
@@ -160,7 +160,7 @@ public:
         typename FixedFeePolicy<T>::State fixed_state{};
         typename NativeFeePolicy<T>::State native_state{};
         typename OracleX2SequentialFeePolicy<T>::State sequence_state{};
-        typename CompiledPolicy<T>::State compiled_state{};
+        typename ChallengeFeePolicy<T>::State compiled_state{};
     };
 
     PolicyModel() = default;
@@ -251,7 +251,7 @@ public:
             return params.fee != T(0) ? params.fee : native_floor;
         case PolicyKind::Compiled:
             // The selected policy owns its conservative fee floor.
-            return CompiledPolicy<T>::fee_floor(params, config, native_floor);
+            return ChallengeFeePolicy<T>::fee_floor(params, config, native_floor);
         default:
             return T(0);
         }
@@ -266,7 +266,7 @@ public:
         case PolicyKind::TwocryptoPolicy:
             return NativeFeePolicy<T>::get_fee(native_state, params, config, research, xp);
         case PolicyKind::Compiled:
-            return CompiledPolicy<T>::get_fee(compiled_state, params, config, research, xp);
+            return ChallengeFeePolicy<T>::get_fee(compiled_state, params, config, research, xp);
         case PolicyKind::None:
         case PolicyKind::ZeroStub:
             return ZeroPolicy<T>::get_fee(zero_state, params, config, research, xp);
@@ -288,7 +288,7 @@ public:
         case PolicyKind::FixedFee:
             return FixedFeePolicy<T>::get_price_scale(fixed_state, research, params, config);
         case PolicyKind::Compiled:
-            return compiled_price_scale_target_or_zero<T, CompiledPolicy<T>>(
+            return compiled_price_scale_target_or_zero<T, ChallengeFeePolicy<T>>(
                 compiled_state,
                 research,
                 params,
@@ -341,7 +341,7 @@ public:
         }
         case PolicyKind::Compiled: {
             auto state = compiled_state;
-            return compiled_price_scale_target_or_zero<T, CompiledPolicy<T>>(
+            return compiled_price_scale_target_or_zero<T, ChallengeFeePolicy<T>>(
                 state,
                 view_research,
                 params,
@@ -366,7 +366,7 @@ public:
     // keeper should attempt a speculative poke.
     T keeper_assembled_target() const {
         if (kind == PolicyKind::Compiled) {
-            return compiled_keeper_assembled_target_or_zero<T, CompiledPolicy<T>>(
+            return compiled_keeper_assembled_target_or_zero<T, ChallengeFeePolicy<T>>(
                 compiled_state,
                 research,
                 params,
@@ -378,7 +378,7 @@ public:
 
     PolicyKeeperDecision<T> keeper_decision() const {
         if (kind == PolicyKind::Compiled) {
-            return compiled_policy_keeper_decision_or_empty<T, CompiledPolicy<T>>(
+            return compiled_policy_keeper_decision_or_empty<T, ChallengeFeePolicy<T>>(
                 compiled_state,
                 research,
                 params,
@@ -399,7 +399,7 @@ public:
         PolicyResearchContext<T> view_research = research;
         view_research.block_timestamp = block_timestamp;
         view_research.price_oracle = current_price_oracle;
-        return compiled_policy_keeper_decision_or_empty<T, CompiledPolicy<T>>(
+        return compiled_policy_keeper_decision_or_empty<T, ChallengeFeePolicy<T>>(
             compiled_state,
             view_research,
             params,
@@ -415,7 +415,7 @@ public:
         view_research.block_timestamp = block_timestamp;
         return compiled_policy_keeper_clock_decision_or_empty<
             T,
-            CompiledPolicy<T>
+            ChallengeFeePolicy<T>
         >(
             compiled_state,
             view_research,
@@ -456,7 +456,7 @@ public:
             NativeFeePolicy<T>::update_state(native_state, research, params, config, update);
             return;
         case PolicyKind::Compiled:
-            CompiledPolicy<T>::update_state(compiled_state, research, params, config, update);
+            ChallengeFeePolicy<T>::update_state(compiled_state, research, params, config, update);
             return;
         case PolicyKind::None:
         case PolicyKind::ZeroStub:

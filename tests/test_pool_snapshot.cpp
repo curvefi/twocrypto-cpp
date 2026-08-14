@@ -1,5 +1,6 @@
 #include <array>
 #include <cstdint>
+#include <limits>
 #include <stdexcept>
 #include <tuple>
 
@@ -104,6 +105,8 @@ bool same_mutable_state(const Pool& a, const Pool& b) {
         a.lp_xcp_profit == b.lp_xcp_profit &&
         a.virtual_price == b.virtual_price &&
         a.admin_balances == b.admin_balances &&
+        a.last_admin_fee_claim_timestamp ==
+            b.last_admin_fee_claim_timestamp &&
         a.block_timestamp == b.block_timestamp &&
         a.donation_shares == b.donation_shares &&
         a.last_donation_release_ts == b.last_donation_release_ts &&
@@ -134,6 +137,7 @@ void mutate_every_captured_category(Pool& pool) {
     pool.lp_xcp_profit = 1'111.0;
     pool.virtual_price = 1'212.0;
     pool.admin_balances = {1'313.0, 1'414.0};
+    pool.last_admin_fee_claim_timestamp = 1'415;
     pool.block_timestamp = 1'515;
     pool.donation_shares = 1'616.0;
     pool.last_donation_release_ts = 1'717.0;
@@ -237,10 +241,38 @@ void test_quote_cache_safety_matrix() {
     );
 }
 
+void test_failed_add_is_atomic() {
+    Pool pool = make_pool(fx::PolicyKind::None);
+    pool.add_liquidity({1'000'000.0, 1'000'000.0}, 0.0);
+    const Pool before = pool;
+    double charged_lp_fee = 123.0;
+
+    try {
+        (void)pool.add_liquidity(
+            {100'000.0, 0.0},
+            std::numeric_limits<double>::max(),
+            false,
+            &charged_lp_fee
+        );
+        throw std::runtime_error("failed add unexpectedly succeeded");
+    } catch (const std::runtime_error&) {
+    }
+
+    require(
+        same_mutable_state(pool, before),
+        "failed add_liquidity leaked mutable state"
+    );
+    require(
+        charged_lp_fee == 123.0,
+        "failed add_liquidity changed its fee output"
+    );
+}
+
 } // namespace
 
 int main() {
     test_mutable_snapshot_round_trip();
     test_quote_cache_safety_matrix();
+    test_failed_add_is_atomic();
     return 0;
 }

@@ -179,6 +179,9 @@ class VyperPoolRunner:
         return {
             "balances": [str(value) for value in balances],
             "admin_balances": [str(pool.admin_balances(0)), str(pool.admin_balances(1))],
+            "last_admin_fee_claim_timestamp": int(
+                pool.eval("self.last_admin_fee_claim_timestamp")
+            ),
             "xp": [str(xp[0]), str(xp[1])],
             "D": str(pool.D()),
             "virtual_price": str(pool.virtual_price()),
@@ -206,6 +209,7 @@ class VyperPoolRunner:
                 boa.env.timestamp = boa.env.timestamp + int(action["time_delta"])
             success = True
             error: str | None = None
+            action_result: str | None = None
             try:
                 kind = action["type"]
                 if kind == "exchange":
@@ -213,7 +217,12 @@ class VyperPoolRunner:
                     token.mint(user, int(action["dx"]))
                     with boa.env.prank(user):
                         token.approve(pool.address, 2**256 - 1)
-                        pool.exchange(action["i"], action["j"], int(action["dx"]), 0)
+                        action_result = str(pool.exchange(
+                            action["i"],
+                            action["j"],
+                            int(action["dx"]),
+                            int(action.get("min_dy", 0)),
+                        ))
                 elif kind == "add_liquidity":
                     amounts = action["amounts"]
                     token0.mint(user, int(amounts[0]))
@@ -223,14 +232,19 @@ class VyperPoolRunner:
                         token0.approve(pool.address, 2**256 - 1)
                         token1.approve(pool.address, 2**256 - 1)
                         if donation:
-                            pool.add_liquidity(
+                            action_result = str(pool.add_liquidity(
                                 [int(amounts[0]), int(amounts[1])],
-                                0,
+                                int(action.get("min_mint_amount", 0)),
                                 "0x0000000000000000000000000000000000000000",
                                 True,
-                            )
+                            ))
                         else:
-                            pool.add_liquidity([int(amounts[0]), int(amounts[1])], 0, user, False)
+                            action_result = str(pool.add_liquidity(
+                                [int(amounts[0]), int(amounts[1])],
+                                int(action.get("min_mint_amount", 0)),
+                                user,
+                                False,
+                            ))
                 elif kind == "time_travel":
                     seconds = int(action.get("seconds", 0))
                     if seconds > 0:
@@ -240,11 +254,40 @@ class VyperPoolRunner:
                 elif kind == "remove_liquidity":
                     minimum = action.get("min_amounts", [0, 0])
                     with boa.env.prank(user):
-                        pool.remove_liquidity(
+                        result = pool.remove_liquidity(
                             int(action["amount"]),
                             [int(minimum[0]), int(minimum[1])],
                             user,
                         )
+                        action_result = f"{result[0]},{result[1]}"
+                elif kind == "remove_liquidity_fixed_out":
+                    with boa.env.prank(user):
+                        action_result = str(pool.remove_liquidity_fixed_out(
+                            int(action["token_amount"]),
+                            int(action["i"]),
+                            int(action["amount_i"]),
+                            int(action.get("min_amount_j", 0)),
+                            user,
+                        ))
+                elif kind == "remove_liquidity_one_coin":
+                    with boa.env.prank(user):
+                        action_result = str(pool.remove_liquidity_one_coin(
+                            int(action["token_amount"]),
+                            int(action["i"]),
+                            int(action.get("min_amount", 0)),
+                            user,
+                        ))
+                elif kind == "get_dy":
+                    action_result = str(pool.get_dy(
+                        int(action["i"]), int(action["j"]), int(action["dx"])
+                    ))
+                elif kind == "get_dx":
+                    action_result = str(pool.get_dx(
+                        int(action["i"]),
+                        int(action["j"]),
+                        int(action["dy"]),
+                        int(action.get("n_iter", 5)),
+                    ))
                 else:
                     raise ValueError(f"unknown action type: {kind}")
             except Exception as exc:  # snapshots intentionally record failed actions
@@ -252,6 +295,8 @@ class VyperPoolRunner:
                 error = str(exc)
             snapshot = self.take_pool_snapshot(pool)
             snapshot["action_success"] = success
+            if success and action_result is not None:
+                snapshot["action_result"] = action_result
             if error:
                 snapshot["error"] = error
             snapshots.append(snapshot)

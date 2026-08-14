@@ -253,8 +253,9 @@ public:
     T donation_protection_lp_threshold = Traits::PRECISION() * 20 / 100; // 20%
     T donation_protection_extension_remainder = Traits::ZERO();
     // Value-semantic transaction boundary for all mutable pool state. The
-    // policy snapshot deliberately omits PolicyConfig's parameter buffer and
-    // PolicyPoolConfig because both are immutable after construction.
+    // policy snapshot preserves research context and only the active policy
+    // state's small mutable fields; immutable config and inactive states stay
+    // out of speculative rollback copies.
     struct MutableSnapshot {
         std::array<T, 2> balances{};
         T D{};

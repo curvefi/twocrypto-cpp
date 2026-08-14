@@ -3,9 +3,10 @@
 
 #include <array>
 #include <cstdint>
+#include <stdexcept>
 #include <type_traits>
 #include <utility>
-
+#include <variant>
 #include "policies/compiled.hpp"
 #include "policies/fixed.hpp"
 #include "policies/native.hpp"
@@ -150,17 +151,22 @@ public:
     typename OracleX2SequentialFeePolicy<T>::State sequence_state{};
     typename ChallengeFeePolicy<T>::State compiled_state{};
 
-    // Transaction-preview rollback needs only the mutable policy surface.
-    // PolicyConfig owns a 1024-element parameter array and PolicyPoolConfig is
-    // immutable after pool construction, so copying the whole PolicyModel for
-    // every speculative route is both unnecessary and very expensive.
+    // Transaction-preview rollback needs only the active policy's mutable
+    // state. PolicyConfig owns a 1024-element parameter array and
+    // PolicyPoolConfig is immutable after pool construction, so copying either
+    // object (or inactive policy states) on every speculative route is both
+    // unnecessary and expensive.
+    using MutableState = std::variant<
+        std::monostate,
+        typename NativeFeePolicy<T>::State,
+        typename OracleX2SequentialFeePolicy<T>::State,
+        typename ChallengeFeePolicy<T>::State
+    >;
+
     struct MutableSnapshot {
+        PolicyKind kind = PolicyKind::None;
         PolicyResearchContext<T> research{};
-        typename ZeroPolicy<T>::State zero_state{};
-        typename FixedFeePolicy<T>::State fixed_state{};
-        typename NativeFeePolicy<T>::State native_state{};
-        typename OracleX2SequentialFeePolicy<T>::State sequence_state{};
-        typename ChallengeFeePolicy<T>::State compiled_state{};
+        MutableState state{};
     };
 
     PolicyModel() = default;
@@ -170,23 +176,53 @@ public:
     explicit PolicyModel(const PolicyConfig<T>& _params) : kind(_params.kind), params(_params) {}
 
     MutableSnapshot mutable_snapshot() const {
-        return {
-            research,
-            zero_state,
-            fixed_state,
-            native_state,
-            sequence_state,
-            compiled_state,
-        };
+        MutableSnapshot snapshot{};
+        snapshot.kind = kind;
+        snapshot.research = research;
+        switch (kind) {
+        case PolicyKind::None:
+        case PolicyKind::ZeroStub:
+        case PolicyKind::FixedFee:
+            snapshot.state = std::monostate{};
+            return snapshot;
+        case PolicyKind::TwocryptoPolicy:
+            snapshot.state.template emplace<1>(native_state);
+            return snapshot;
+        case PolicyKind::OracleX2SequentialFee:
+            snapshot.state.template emplace<2>(sequence_state);
+            return snapshot;
+        case PolicyKind::Compiled:
+            snapshot.state.template emplace<3>(compiled_state);
+            return snapshot;
+        }
+        throw std::logic_error("unsupported policy kind in mutable snapshot");
     }
 
     void restore_mutable(const MutableSnapshot& snapshot) {
+        if (snapshot.kind != kind) {
+            throw std::logic_error("policy kind changed during mutable rollback");
+        }
+        switch (kind) {
+        case PolicyKind::None:
+        case PolicyKind::ZeroStub:
+        case PolicyKind::FixedFee:
+            if (!std::holds_alternative<std::monostate>(snapshot.state)) {
+                throw std::logic_error("invalid empty policy snapshot state");
+            }
+            break;
+        case PolicyKind::TwocryptoPolicy:
+            native_state = std::get<1>(snapshot.state);
+            break;
+        case PolicyKind::OracleX2SequentialFee:
+            sequence_state = std::get<2>(snapshot.state);
+            break;
+        case PolicyKind::Compiled:
+            compiled_state = std::get<3>(snapshot.state);
+            break;
+        default:
+            throw std::logic_error("unsupported policy kind in mutable restore");
+        }
         research = snapshot.research;
-        zero_state = snapshot.zero_state;
-        fixed_state = snapshot.fixed_state;
-        native_state = snapshot.native_state;
-        sequence_state = snapshot.sequence_state;
-        compiled_state = snapshot.compiled_state;
     }
 
     // Quote results are cacheable only for native no-policy pools and for the

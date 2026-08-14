@@ -146,14 +146,9 @@ void mutate_every_captured_category(Pool& pool) {
 
     pool.policy.research.block_timestamp = 2'020;
     pool.policy.research.price_oracle = 2'121.0;
-    pool.policy.native_state.pool.xp = {2'222.0, 2'323.0};
-    pool.policy.native_state.pool.price_scale = 2'424.0;
-    pool.policy.native_state.pool.price_oracle = 2'525.0;
-    pool.policy.native_state.pool.last_prices = 2'626.0;
-    pool.policy.native_state.pool.virtual_price = 2'727.0;
-    pool.policy.native_state.pool.xcp_profit = 2'828.0;
-    pool.policy.native_state.pool.D = 2'929.0;
-    pool.policy.native_state.pool.ts = 2'030;
+    // The native state is inactive for this sequential-policy snapshot and is
+    // intentionally left unchanged here; a dedicated test proves that it is
+    // not copied on rollback.
     pool.policy.sequence_state.pool.xp = {3'131.0, 3'232.0};
     pool.policy.sequence_state.pool.price_scale = 3'333.0;
     pool.policy.sequence_state.pool.price_oracle = 3'434.0;
@@ -199,6 +194,66 @@ void test_mutable_snapshot_round_trip() {
 
     pool.restore_mutable(snapshot);
     require(same_mutable_state(pool, expected), "mutable snapshot failed to restore state");
+}
+
+void test_active_policy_snapshot_variants() {
+    Pool none = make_pool(fx::PolicyKind::None);
+    none.policy.research.block_timestamp = 17;
+    none.policy.research.price_oracle = 1.5;
+    const auto none_snapshot = none.mutable_snapshot();
+    none.policy.research.block_timestamp = 99;
+    none.policy.research.price_oracle = 9.5;
+    none.restore_mutable(none_snapshot);
+    require(
+        none.policy.research.block_timestamp == 17 &&
+            none.policy.research.price_oracle == 1.5,
+        "none policy rollback failed to restore research context"
+    );
+
+    Pool compiled = make_pool(fx::PolicyKind::Compiled);
+    compiled.policy.research.block_timestamp = 23;
+    compiled.policy.research.price_oracle = 2.5;
+    const auto compiled_snapshot = compiled.mutable_snapshot();
+    require(
+        compiled_snapshot.policy.kind == fx::PolicyKind::Compiled,
+        "compiled policy snapshot lost its active-state tag"
+    );
+    compiled.policy.research.block_timestamp = 101;
+    compiled.policy.research.price_oracle = 10.5;
+    compiled.restore_mutable(compiled_snapshot);
+    require(
+        compiled.policy.research.block_timestamp == 23 &&
+            compiled.policy.research.price_oracle == 2.5,
+        "compiled policy rollback failed to restore research context"
+    );
+}
+
+void test_inactive_policy_state_is_not_snapshotted() {
+    Pool pool = make_pool(fx::PolicyKind::OracleX2SequentialFee);
+    const auto snapshot = pool.mutable_snapshot();
+    pool.policy.native_state.pool.xp = {7.0, 8.0};
+    pool.policy.sequence_state.policy_fee = 0.004;
+    pool.restore_mutable(snapshot);
+    require(
+        pool.policy.native_state.pool.xp == std::array<double, 2>{7.0, 8.0},
+        "rollback copied inactive native policy state"
+    );
+    require(
+        pool.policy.sequence_state.policy_fee == 0.0,
+        "rollback failed to restore active sequential policy state"
+    );
+}
+
+void test_unsupported_policy_snapshot_kind_rejects() {
+    Pool pool = make_pool(fx::PolicyKind::None);
+    pool.policy.kind = static_cast<fx::PolicyKind>(99);
+    bool threw = false;
+    try {
+        (void)pool.mutable_snapshot();
+    } catch (const std::logic_error&) {
+        threw = true;
+    }
+    require(threw, "unsupported policy kind silently fell through snapshot");
 }
 
 void test_quote_cache_safety_matrix() {
@@ -272,6 +327,9 @@ void test_failed_add_is_atomic() {
 
 int main() {
     test_mutable_snapshot_round_trip();
+    test_active_policy_snapshot_variants();
+    test_inactive_policy_state_is_not_snapshotted();
+    test_unsupported_policy_snapshot_kind_rejects();
     test_quote_cache_safety_matrix();
     test_failed_add_is_atomic();
     return 0;

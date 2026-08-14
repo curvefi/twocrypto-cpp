@@ -1,4 +1,4 @@
-"""Installed Python helpers for private TwoCrypto pool parity diagnostics."""
+"""Installed Python helpers for exact TwoCrypto pool parity."""
 
 from .paths import core_root, reference_root
 

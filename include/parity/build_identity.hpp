@@ -33,7 +33,7 @@ inline bool handle_build_identity_arg(int argc, char* argv[]) {
 
     const std::string_view arg(argv[1]);
     if (arg == "--version") {
-        std::cout << "twocrypto-pool revision=" << TWOCRYPTO_POOL_REVISION
+        std::cout << "twocrypto-cpp revision=" << TWOCRYPTO_POOL_REVISION
                   << " build_mode=" << TWOCRYPTO_POOL_BUILD_MODE
                   << " compiler=" << TWOCRYPTO_POOL_COMPILER << "\n";
         return true;

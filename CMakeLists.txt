@@ -31,10 +31,8 @@ else()
     target_include_directories(twocrypto_pool INTERFACE ${Boost_INCLUDE_DIRS})
 endif()
 
-option(TWOCRYPTO_POOL_BUILD_MATH_ADAPTER
-    "Build the optional private C ABI math adapter" OFF)
 option(TWOCRYPTO_POOL_BUILD_BENCHMARKS
-    "Build optional private parity benchmark executables" OFF)
+    "Build the optional exact-integer parity harness" OFF)
 if(CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR)
     set(_twocrypto_pool_build_tests_default ON)
 else()
@@ -123,35 +121,16 @@ function(pool_target_compiled_policy TARGET_NAME)
     endif()
 endfunction()
 
-if(TWOCRYPTO_POOL_BUILD_MATH_ADAPTER)
-    add_library(stableswap_math_i SHARED src/stableswap_math_i.cpp)
-    target_link_libraries(stableswap_math_i PRIVATE twocrypto::pool)
-    pool_private_defaults(stableswap_math_i)
-    set_target_properties(stableswap_math_i PROPERTIES
-        LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
-        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
-        ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
-endif()
 
 if(TWOCRYPTO_POOL_BUILD_BENCHMARKS)
     find_package(Boost 1.79 REQUIRED COMPONENTS json)
     find_package(Threads REQUIRED)
 
-    function(add_pool_benchmark TARGET_NAME MODE_DEFINE)
-        add_executable(${TARGET_NAME} src/benchmark_harness.cpp)
-        if(NOT "${MODE_DEFINE}" STREQUAL "")
-            target_compile_definitions(${TARGET_NAME} PRIVATE ${MODE_DEFINE})
-        endif()
-        target_link_libraries(${TARGET_NAME} PRIVATE
-            twocrypto::pool Boost::json Threads::Threads)
-        pool_private_defaults(${TARGET_NAME})
-        pool_target_compiled_policy(${TARGET_NAME})
-    endfunction()
-
-    add_pool_benchmark(benchmark_harness_i HARNESS_MODE_I)
-    add_pool_benchmark(benchmark_harness_d HARNESS_MODE_D)
-    add_pool_benchmark(benchmark_harness_f HARNESS_MODE_F)
-    add_pool_benchmark(benchmark_harness_ld HARNESS_MODE_LD)
+    add_executable(benchmark_harness_i src/benchmark_harness.cpp)
+    target_link_libraries(benchmark_harness_i PRIVATE
+        twocrypto::pool Boost::json Threads::Threads)
+    pool_private_defaults(benchmark_harness_i)
+    pool_target_compiled_policy(benchmark_harness_i)
 endif()
 
 if(TWOCRYPTO_POOL_BUILD_TESTS)
@@ -166,14 +145,6 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_pool_snapshot.cpp")
     add_test(NAME test_pool_snapshot COMMAND test_pool_snapshot)
 endif()
 
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_parity_config.cpp")
-    find_package(Boost 1.79 REQUIRED COMPONENTS json)
-    enable_testing()
-    add_executable(test_parity_config tests/test_parity_config.cpp)
-    target_link_libraries(test_parity_config PRIVATE twocrypto::pool Boost::json)
-    pool_private_defaults(test_parity_config)
-    add_test(NAME test_parity_config COMMAND test_parity_config)
-endif()
 endif()
 
 install(DIRECTORY include/pools/twocrypto_fx/

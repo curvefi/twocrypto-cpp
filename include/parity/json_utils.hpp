@@ -1,31 +1,24 @@
-// Private JSON helpers for the standalone parity fixture executable.
+// Private JSON helpers for the exact uint256 parity executable.
 #pragma once
 
 #include <boost/json.hpp>
 
-#include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <fstream>
 #include <iomanip>
-#include <iostream>
 #include <sstream>
 #include <stdexcept>
 #include <string>
-#include <string_view>
 
 namespace arb::parity {
-
-constexpr long double WAD = 1e18L;
-constexpr long double FEE_SCALE = 1e10L;
 
 inline bool is_number_or_string(const boost::json::value& value) {
     return value.is_string() || value.is_double() || value.is_int64() || value.is_uint64();
 }
 
-// Keep integer JSON literals exact and round-trip JSON doubles at binary64
-// precision.  Exact-mode callers use the resulting decimal as uint256 input;
-// floating callers materialize through parse_input_double below.
+// Preserve decimal input text and integer JSON literals exactly. JSON doubles
+// are rendered with their full binary64 precision before uint256 conversion.
 inline std::string scalar_to_string(const boost::json::value& value) {
     if (value.is_string()) return std::string(value.as_string().c_str());
     if (value.is_int64()) return std::to_string(value.as_int64());
@@ -38,58 +31,6 @@ inline std::string scalar_to_string(const boost::json::value& value) {
     throw std::runtime_error("expected a number or string");
 }
 
-// Pool/config inputs have a binary64 precision boundary, independent of the
-// pool's arithmetic type.  A long-double simulation widens the resulting
-// double; it must not recover extra bits by parsing source decimals as long
-// double.
-inline double parse_input_double(const boost::json::value& value) {
-    if (value.is_string()) return std::strtod(value.as_string().c_str(), nullptr);
-    if (value.is_double()) return value.as_double();
-    if (value.is_int64()) return static_cast<double>(value.as_int64());
-    if (value.is_uint64()) return static_cast<double>(value.as_uint64());
-    throw std::runtime_error("expected a number or string");
-}
-
-template <typename T>
-inline std::string to_str_1e18(T value) {
-    long double scaled = static_cast<long double>(value) * WAD;
-    if (!std::isfinite(scaled)) scaled = 0;
-    if (scaled < 0) scaled = 0;
-    const auto rounded = std::floor(scaled + 0.5L);
-    std::ostringstream stream;
-    stream.setf(std::ios::fixed);
-    stream.precision(0);
-    stream << rounded;
-    return stream.str();
-}
-
-template <typename T>
-inline std::string to_int_string(T value) {
-    long double converted = static_cast<long double>(value);
-    if (!std::isfinite(converted)) converted = 0;
-    if (converted < 0) converted = 0;
-    const auto rounded = std::floor(converted + 0.5L);
-    std::ostringstream stream;
-    stream.setf(std::ios::fixed);
-    stream.precision(0);
-    stream << rounded;
-    return stream.str();
-}
-
-template <typename T>
-inline T parse_plain_real(const boost::json::value& value) {
-    return static_cast<T>(parse_input_double(value));
-}
-
-template <typename T>
-inline T parse_scaled_1e18(const boost::json::value& value) {
-    return static_cast<T>(parse_input_double(value) / 1e18);
-}
-
-template <typename T>
-inline T parse_fee_1e10(const boost::json::value& value) {
-    return static_cast<T>(parse_input_double(value) / 1e10);
-}
 
 inline std::string get_str(const boost::json::object& object, const char* key) {
     const auto it = object.find(key);

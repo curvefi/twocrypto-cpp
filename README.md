@@ -1,18 +1,43 @@
-# twocrypto-pool
+# twocrypto-cpp
 
-Standalone C++17 TwoCrypto pool SDK, compiled-policy extension point, and exact Vyper parity verification suite.
+Standalone C++17 TwoCrypto pool SDK, exact-integer adapter, and pinned Vyper parity package. This repository owns the pool state machine and its policy ABI/safety envelope. It does **not** own event feeds, market scenarios, evaluator execution, optimization, plotting, or concrete experimental policy profiles; those belong to `curve-fx-arb-harness` and `curve-fx-optimization`.
 
-The public product is an installable, header-only C++ target `twocrypto::pool` (and alias `twocrypto_pool`). Public headers retain the include spelling `<pools/twocrypto_fx/...>` and namespace `arb::pools::twocrypto_fx`.
+The public product is the installable, header-only CMake target `twocrypto::pool` (alias `twocrypto_pool`). The Python package `twocrypto_parity` and exact harness are private validation utilities.
 
-Python tools (`twocrypto_parity`) and executable benchmark adapters (`benchmark_harness_{i,d,f,ld}`) are private validation and parity verification utilities.
+## Independent setup
 
-All commands below run from `twocrypto-pool/`.
+Requirements: Python 3.12, [uv](https://docs.astral.sh/uv/), CMake 3.14+, a C++17 compiler, and Boost 1.79+ headers. Run Python and CMake setup independently; the Python environment is not needed by C++ consumers.
 
-## Public C++ SDK
+```sh
+cd /path/to/twocrypto-cpp
+uv sync --frozen --extra test
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --parallel
+```
 
-The SDK requires C++17 and Boost.Multiprecision. Linking `twocrypto::pool` does not propagate threads, Boost.JSON, OpenSSL, executable-only compile definitions, or a concrete compiled policy to consumers.
+The standalone CMake build enables pool-local tests by default. A consumer should install the SDK into a separate prefix and use only the exported target:
 
-The pool owns its complete value-semantic transaction snapshot:
+```sh
+cmake --install build --prefix "$PWD/_install"
+```
+
+```cmake
+find_package(twocrypto_pool CONFIG REQUIRED)
+add_executable(pool_consumer main.cpp)
+target_link_libraries(pool_consumer PRIVATE twocrypto::pool)
+```
+
+```sh
+cmake -S /path/to/consumer -B /tmp/twocrypto-consumer-build \
+  -DCMAKE_PREFIX_PATH=/path/to/twocrypto-cpp/_install
+cmake --build /tmp/twocrypto-consumer-build --parallel
+```
+
+The install tree contains `twocrypto_poolConfig.cmake`, headers, and the `twocrypto::pool` target. It does not require this source checkout, private adapters, Boost.JSON, threads, OpenSSL, or a concrete compiled policy.
+
+## C++ API and transaction snapshots
+
+The pool owns a value-semantic mutable transaction snapshot:
 
 ```cpp
 namespace tc = arb::pools::twocrypto_fx;
@@ -24,129 +49,55 @@ pool.restore_mutable(before);
 bool cacheable = pool.quote_cache_safe();
 ```
 
-`MutableSnapshot` covers every mutable pool, policy, research, and hook-metric field changed by a transaction while excluding immutable configuration. It is allocation-free. `quote_cache_safe()` is true for the native `None` policy and the macro-absent compiled passthrough; selected compiled policies deny caching by default.
+`MutableSnapshot` covers mutable pool, policy, research, and hook-metric fields changed by a transaction while excluding immutable configuration. It is allocation-free. `quote_cache_safe()` is true for the native `None` policy and macro-absent compiled passthrough; selected compiled policies deny caching by default.
 
-Configure and install:
+## Private compiled-policy extension
 
-```sh
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build -j
-cmake --install build --prefix "$PWD/_install"
-```
+`PolicyKind::Compiled` is a final-executable extension point. A final executable may define `TWOCRYPTO_POLICY_HEADER` to a regular header that provides `CompiledPolicy<T>` in `arb::pools::twocrypto_fx`. The pool retains clamping, step limiting, LP protection, rollback, and actuator authority. Without a selected header, `pools/twocrypto_fx/policies/compiled_passthrough.hpp` delegates to native surfaces.
 
-Consume the install tree without this source checkout:
-
-```cmake
-find_package(twocrypto_pool CONFIG REQUIRED)
-add_executable(pool_consumer main.cpp)
-target_link_libraries(pool_consumer PRIVATE twocrypto::pool)
-```
+For the private exact-integer parity harness, configure the committed deterministic policy fixture and its digest:
 
 ```sh
-cmake -S /path/to/consumer -B /tmp/pool-consumer-build \
-  -DCMAKE_PREFIX_PATH="$PWD/_install"
-cmake --build /tmp/pool-consumer-build
-```
-
-The install exports `twocrypto_poolConfig.cmake` and the `twocrypto::pool` target. It does not install private adapters or require a source-relative include path.
-
-## Repository-owned compiled policy extension
-
-`PolicyKind::Compiled` is the executable-private extension point. A final executable may define:
-
-```text
-TWOCRYPTO_POLICY_HEADER="/absolute/path/to/policy.hpp"
-```
-
-That header defines `CompiledPolicy<T>` in `arb::pools::twocrypto_fx`. It may provide a fee, a price-scale target, state updates, a conservative fee floor, and optional keeper decision methods. The pool retains clamping, step limiting, LP protection, transaction rollback, and actuator authority.
-
-Without a selected header, `pools/twocrypto_fx/policies/compiled_passthrough.hpp` returns zero for fee and target, which delegates to the native pool surfaces.
-
-For pool-owned benchmark targets, configure the header and optional expected digest with:
-
-```sh
-cmake -S . -B build/policy \
-  -DCMAKE_BUILD_TYPE=Release \
+cmake -S . -B build/policy -DCMAKE_BUILD_TYPE=Release \
   -DTWOCRYPTO_POOL_BUILD_BENCHMARKS=ON \
   -DTWOCRYPTO_POOL_POLICY_PATH="$PWD/fixtures/test_compiled_policy.hpp" \
-  -DTWOCRYPTO_POOL_POLICY_SHA256=<expected-sha256>
-cmake --build build/policy --target benchmark_harness_ld
+  -DTWOCRYPTO_POOL_POLICY_SHA256=6351532280ec1a51aa753bcf80b0883a3105b8c1210e3b348d8599497ef763ee
+cmake --build build/policy --target benchmark_harness_i --parallel
 ```
 
-CMake resolves a regular file, hashes its exact bytes, rejects a supplied digest mismatch, and makes configuration depend on the file. The macro and identity fields are PRIVATE properties of final executables and never become an INTERFACE property of `twocrypto_pool`.
+CMake resolves a regular file, hashes its exact bytes, rejects a supplied digest mismatch, and makes configuration depend on the file. Policy macros and identity fields are private to the final executable and never become an interface property of `twocrypto_pool`. Concrete orchestrator profiles are documented in that repository, not copied here.
 
-## Python parity package
+## Python parity
 
-The installed package is `twocrypto_parity`. It contains private parity and diagnostic helpers:
+Install the pinned Python environment with `uv sync --frozen --extra test`. The lockfile pins Vyper 0.4.3, titanoboa 0.2.8, snekmate 0.1.2, and pytest 8.4.1.
 
-- `twocrypto_parity.vyper_pool_runner` executes the pinned Boa reference;
-- `twocrypto_parity.cpp_pool_runner` runs already-built typed adapters;
-- `twocrypto_parity.numeric_variants` compares integer and floating diagnostics;
-- `twocrypto_parity.math_cases` generates deterministic exact math cases;
-- `twocrypto_parity.generate_data` generates deterministic pool/action inputs;
-- `twocrypto_parity.compare` compares C++ and Boa snapshots, including failures.
-
-Vyper helpers are package resources, so installed tests do not depend on an unpackaged source directory.
+The package exposes one exact parity route through `twocrypto_parity.cpp_pool_runner`; it invokes an already-built `benchmark_harness_i` and never configures or writes into the source tree. The Boa adapter is used by the authority test to compare the same deterministic action sequence against the pinned reference.
 
 ```sh
-uv sync --frozen --extra test
-uv run --frozen --no-sync twocrypto-parity --version
+cmake -S . -B build/parity -DCMAKE_BUILD_TYPE=Release \
+  -DTWOCRYPTO_POOL_BUILD_BENCHMARKS=ON
+cmake --build build/parity --target benchmark_harness_i --parallel
+TWOCRYPTO_BUILD_ROOT="$PWD/build/parity" \
+  uv run --frozen --no-sync twocrypto-parity \
+  /path/to/pools.json /path/to/sequences.json --out /tmp/cpp.json
 ```
 
-Supported Python is 3.12. The lock pins Vyper 0.4.3, titanoboa 0.2.8, snekmate 0.1.2, and pytest 8.4.1.
+The high-value authority test constructs its pool and action inputs in a temporary directory, so no generated fixtures are committed. The only retained fixture is `fixtures/test_compiled_policy.hpp`, used for policy-header attestation.
 
-## Pinned Vyper reference
-
-The reference Vyper contract submodule is located at `reference/twocrypto-ng` and pinned to revision `2c645ca604a4a0878e08f2f1581e5c4ae1c8f8d4` from `https://github.com/curvefi/twocrypto-ng.git`.
-
-`reference/REVISION` records the canonical upstream pin.
-
-## Deterministic fixtures
-
-Committed inputs under `fixtures/` are self-contained JSON:
-
-- `pools.json`: seeded pool configurations;
-- `sequences.json`: seeded time travel, exchanges, ordinary additions, donations, and removals;
-- `math_cases.json`: seeded exact math cases;
-- `failed_action.json`: failed-action atomicity; and
-- `test_compiled_policy.hpp`: minimal deterministic compiled policy fixture.
-
-Generate supplementary fixtures into a caller-owned directory:
+The exact harness is the sole private adapter:
 
 ```sh
-uv run --frozen --no-sync python -m twocrypto_parity.generate_data \
-  --seed 7 --pools 4 --trades 64 --start-ts 1700000000 \
-  --out /tmp/twocrypto-fixtures
+cmake -S . -B build/parity -DCMAKE_BUILD_TYPE=Release \
+  -DTWOCRYPTO_POOL_BUILD_BENCHMARKS=ON
+cmake --build build/parity --target benchmark_harness_i --parallel
 ```
 
-## Private parity targets
+`benchmark_harness_i` is the uint256 adapter and emits exact decimal state snapshots.
 
-Enable only the adapters needed for validation:
+## Provenance, audit, and data posture
 
-```sh
-cmake -S . -B build/parity \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DTWOCRYPTO_POOL_BUILD_BENCHMARKS=ON \
-  -DTWOCRYPTO_POOL_BUILD_MATH_ADAPTER=ON
-cmake --build build/parity --target \
-  benchmark_harness_i benchmark_harness_d \
-  benchmark_harness_f benchmark_harness_ld stableswap_math_i
-```
+The Vyper reference is the `reference/twocrypto-ng` Git submodule at revision `2c645ca604a4a0878e08f2f1581e5c4ae1c8f8d4` from `https://github.com/curvefi/twocrypto-ng.git`, recorded in `reference/REVISION`. Keep this submodule revision with any parity report. A report should record the pool revision, compiler/build mode, uint256 harness identity, policy-header digest when applicable, and the explicit input paths used for the run.
 
-`benchmark_harness_i` is the exact integer adapter. The `d`, `f`, and `ld` adapters are diagnostics only. The math adapter is emitted under `build/parity/lib/` with the platform suffix.
+This private repository does not grant redistribution rights for source, policy fixtures, or reference data. Do not publish or copy private data without maintainer authorization; treat a missing or unavailable submodule/data checkout as an access/provenance issue rather than substituting another reference.
 
-## Tests
-
-Build the standalone C++ snapshot/config tests:
-
-```sh
-cmake -S . -B /tmp/twocrypto-pool-build -DCMAKE_BUILD_TYPE=Release
-cmake --build /tmp/twocrypto-pool-build -j
-ctest --test-dir /tmp/twocrypto-pool-build --output-on-failure
-```
-
-Run the self-contained Python suite:
-
-```sh
-uv run --frozen --no-sync pytest -q tests
-```
+The pool boundary is deliberately narrow: install this SDK first; the harness consumes the installed target, and the orchestrator supplies concrete profiles and all workflows. Do not use historical checkout names or source-relative include paths as runtime dependencies.

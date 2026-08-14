@@ -1,16 +1,11 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
-#include <cmath>
-#include <cstdlib>
 #include <fstream>
 #include <iostream>
 #include <mutex>
-#include <sstream>
 #include <string>
-#include <string_view>
 #include <thread>
-#include <type_traits>
 #include <vector>
 
 #include <boost/json.hpp>
@@ -37,40 +32,22 @@ using arb::parity::Action;
 using arb::parity::ActionSequence;
 using arb::parity::PoolConfig;
 
-// Action amounts are replay data.  Preserve their historical long-double
-// materialization boundary while pool/config values use binary64.
-template <typename T>
-T parse_wad(const std::string& value) {
-    if constexpr (std::is_same_v<T, uint256>) {
-        return uint256(value);
-    } else {
-        return static_cast<T>(std::strtold(value.c_str(), nullptr) / 1e18L);
-    }
+uint256 parse_wad(const std::string& value) {
+    return uint256(value);
 }
 
-template <typename T>
-std::string to_int_string(const T& value) {
-    if constexpr (std::is_same_v<T, uint256>) {
-        return value.template convert_to<std::string>();
-    } else {
-        return arb::parity::to_int_string(value);
-    }
+std::string to_int_string(const uint256& value) {
+    return value.convert_to<std::string>();
 }
 
-template <typename T>
-std::string to_wei_string(const T& value) {
-    if constexpr (std::is_same_v<T, uint256>) {
-        return value.template convert_to<std::string>();
-    } else {
-        return arb::parity::to_str_1e18(value);
-    }
+std::string to_wei_string(const uint256& value) {
+    return value.convert_to<std::string>();
 }
 
-template <typename T>
-json::object snapshot_pool(const TwoCryptoPool<T>& pool) {
-    using Traits = PoolTraits<T>;
+json::object snapshot_pool(const TwoCryptoPool<uint256>& pool) {
+    using Traits = PoolTraits<uint256>;
 
-    const std::array<T, 2> xp = {
+    const std::array<uint256, 2> xp = {
         pool.balances[0] * pool.precisions[0],
         (pool.balances[1] * pool.precisions[1] * pool.cached_price_scale) / Traits::PRECISION(),
     };
@@ -101,8 +78,7 @@ json::object snapshot_pool(const TwoCryptoPool<T>& pool) {
     return o;
 }
 
-template <typename T>
-void execute_action(TwoCryptoPool<T>& pool, const Action& action) {
+void execute_action(TwoCryptoPool<uint256>& pool, const Action& action) {
     if (!action.is_object) {
         throw std::runtime_error(action.parse_error);
     }
@@ -111,23 +87,23 @@ void execute_action(TwoCryptoPool<T>& pool, const Action& action) {
     }
     if (action.type == "exchange") {
         (void)pool.exchange(
-            T(action.i), T(action.j), parse_wad<T>(action.dx), PoolTraits<T>::ZERO()
+            uint256(action.i), uint256(action.j), parse_wad(action.dx), PoolTraits<uint256>::ZERO()
         );
     } else if (action.type == "add_liquidity") {
-        const std::array<T, 2> amounts = {
-            parse_wad<T>(action.amounts[0]),
-            parse_wad<T>(action.amounts[1]),
+        const std::array<uint256, 2> amounts = {
+            parse_wad(action.amounts[0]),
+            parse_wad(action.amounts[1]),
         };
-        (void)pool.add_liquidity(amounts, PoolTraits<T>::ZERO(), action.donation);
+        (void)pool.add_liquidity(amounts, PoolTraits<uint256>::ZERO(), action.donation);
     } else if (action.type == "remove_liquidity") {
-        std::array<T, 2> min_amounts{PoolTraits<T>::ZERO(), PoolTraits<T>::ZERO()};
+        std::array<uint256, 2> min_amounts{PoolTraits<uint256>::ZERO(), PoolTraits<uint256>::ZERO()};
         if (action.has_min_amounts) {
             min_amounts = {
-                parse_wad<T>(action.min_amounts[0]),
-                parse_wad<T>(action.min_amounts[1]),
+                parse_wad(action.min_amounts[0]),
+                parse_wad(action.min_amounts[1]),
             };
         }
-        (void)pool.remove_liquidity(parse_wad<T>(action.amount), min_amounts);
+        (void)pool.remove_liquidity(parse_wad(action.amount), min_amounts);
     } else if (action.type == "time_travel") {
         if (action.has_seconds) {
             if (action.seconds > 0) {
@@ -142,9 +118,8 @@ void execute_action(TwoCryptoPool<T>& pool, const Action& action) {
 }
 
 
-template <typename T>
 json::object run_one_pool(
-    const PoolConfig<T>& pool_config,
+    const PoolConfig& pool_config,
     const ActionSequence& sequence,
     uint64_t snapshot_every
 ) {
@@ -152,7 +127,7 @@ json::object run_one_pool(
     bool last_success = true;
     std::string last_error;
 
-    TwoCryptoPool<T> pool = arb::parity::make_pool(pool_config, sequence);
+    TwoCryptoPool<uint256> pool = arb::parity::make_pool(pool_config, sequence);
 
     json::array states;
     json::object last_state;
@@ -245,7 +220,6 @@ json::object run_one_pool(
     return out;
 }
 
-template <typename T>
 int run_harness(
     const std::string& pools_file,
     const std::string& sequences_file,
@@ -307,11 +281,11 @@ int run_harness(
                 if (!raw_pool.is_object()) {
                     throw std::runtime_error("pool config must be an object");
                 }
-                const PoolConfig<T> config = arb::parity::parse_pool_config<T>(
+                const PoolConfig config = arb::parity::parse_pool_config(
                     raw_pool.as_object()
                 );
                 name = config.name;
-                results[index] = run_one_pool<T>(config, sequence, snapshot_every);
+                results[index] = run_one_pool(config, sequence, snapshot_every);
             } catch (const std::exception& error) {
                 json::object out;
                 out["pool_config"] = name;
@@ -359,18 +333,6 @@ int run_harness(
 
 } // namespace
 
-// Numeric mode is selected at compile time via HARNESS_MODE_*; the typed
-// binaries (benchmark_harness_{i,d,f,ld}) each define one. Default is double.
-#if defined(HARNESS_MODE_I)
-using HarnessT = uint256;
-#elif defined(HARNESS_MODE_F)
-using HarnessT = float;
-#elif defined(HARNESS_MODE_LD)
-using HarnessT = long double;
-#else
-using HarnessT = double;
-#endif
-
 int main(int argc, char* argv[]) {
     if (arb::parity::handle_build_identity_arg(argc, argv)) {
         return 0;
@@ -380,5 +342,5 @@ int main(int argc, char* argv[]) {
         std::cerr << "Usage: " << argv[0] << " <pools.json> <sequences.json> <output.json>\n";
         return 1;
     }
-    return run_harness<HarnessT>(argv[1], argv[2], argv[3]);
+    return run_harness(argv[1], argv[2], argv[3]);
 }

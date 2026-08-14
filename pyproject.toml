@@ -1,7 +1,7 @@
 [project]
-name = "twocrypto-pool"
+name = "twocrypto-cpp"
 version = "0.1.0"
-description = "Installable header-only TwoCrypto pool SDK with private Vyper parity tools"
+description = "Installable header-only TwoCrypto pool SDK with exact Vyper parity route"
 requires-python = ">=3.12,<3.13"
 dependencies = [
   "titanoboa==0.2.8",
@@ -13,7 +13,7 @@ dependencies = [
 test = ["pytest==8.4.1"]
 
 [project.scripts]
-twocrypto-parity = "twocrypto_parity.numeric_variants:main"
+twocrypto-parity = "twocrypto_parity.cpp_pool_runner:main"
 
 [build-system]
 requires = ["setuptools>=75"]

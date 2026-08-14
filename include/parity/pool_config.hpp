@@ -1,13 +1,10 @@
-// Private, minimal pool/action fixture adapter for the standalone parity target.
+// Private exact uint256 pool/action fixture adapter for the parity target.
 #pragma once
 
-#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <stdexcept>
 #include <string>
-#include <cstdlib>
-#include <type_traits>
 #include <string_view>
 #include <vector>
 
@@ -27,53 +24,51 @@ using arb::pools::twocrypto_fx::uint256;
 
 // This is deliberately not PoolInit: it contains no application scenario,
 // cost, donation schedule, tag, or request-echo state.
-template <typename T>
 struct HistoricalState {
     bool enabled{false};
     uint64_t source_block{0};
     uint64_t source_timestamp{0};
 
-    std::array<T, 2> balances{T(0), T(0)};
-    std::array<T, 2> admin_balances{T(0), T(0)};
-    T D{T(0)};
-    T total_supply{T(0)};
-    T price_scale{T(0)};
-    T price_oracle{T(0)};
-    T last_prices{T(0)};
+    std::array<uint256, 2> balances{uint256(0), uint256(0)};
+    std::array<uint256, 2> admin_balances{uint256(0), uint256(0)};
+    uint256 D{uint256(0)};
+    uint256 total_supply{uint256(0)};
+    uint256 price_scale{uint256(0)};
+    uint256 price_oracle{uint256(0)};
+    uint256 last_prices{uint256(0)};
     uint64_t last_timestamp{0};
-    T virtual_price{T(0)};
-    T xcp_profit{T(0)};
-    T lp_xcp_profit{T(0)};
+    uint256 virtual_price{uint256(0)};
+    uint256 xcp_profit{uint256(0)};
+    uint256 lp_xcp_profit{uint256(0)};
 
-    T donation_shares{T(0)};
-    T last_donation_release_ts{T(0)};
-    T donation_protection_expiry_ts{T(0)};
-    T donation_protection_period{T(0)};
-    T donation_protection_lp_threshold{T(0)};
-    T donation_protection_extension_remainder{T(0)};
-    T donation_shares_max_ratio{T(0)};
+    uint256 donation_shares{uint256(0)};
+    uint256 last_donation_release_ts{uint256(0)};
+    uint256 donation_protection_expiry_ts{uint256(0)};
+    uint256 donation_protection_period{uint256(0)};
+    uint256 donation_protection_lp_threshold{uint256(0)};
+    uint256 donation_protection_extension_remainder{uint256(0)};
+    uint256 donation_shares_max_ratio{uint256(0)};
 };
 
-template <typename T>
 struct PoolConfig {
     std::string name;
-    std::array<T, 2> precisions{PoolTraits<T>::ONE(), PoolTraits<T>::ONE()};
-    T A{T(0)};
-    T gamma{T(0)};
-    T mid_fee{T(0)};
-    T out_fee{T(0)};
-    T fee_gamma{T(0)};
-    T adjustment_step_min{T(0)};
-    T adjustment_step_max{T(0)};
-    T ma_time{T(0)};
-    T reserved_profit_fraction{PoolTraits<T>::FEE_PRECISION() / 2};
-    T admin_fee{PoolTraits<T>::FEE_PRECISION() / 2};
+    std::array<uint256, 2> precisions{PoolTraits<uint256>::ONE(), PoolTraits<uint256>::ONE()};
+    uint256 A{uint256(0)};
+    uint256 gamma{uint256(0)};
+    uint256 mid_fee{uint256(0)};
+    uint256 out_fee{uint256(0)};
+    uint256 fee_gamma{uint256(0)};
+    uint256 adjustment_step_min{uint256(0)};
+    uint256 adjustment_step_max{uint256(0)};
+    uint256 ma_time{uint256(0)};
+    uint256 reserved_profit_fraction{PoolTraits<uint256>::FEE_PRECISION() / 2};
+    uint256 admin_fee{PoolTraits<uint256>::FEE_PRECISION() / 2};
     PolicyKind policy_kind{PolicyKind::None};
-    PolicyConfig<T> policy_config{};
-    T initial_price{PoolTraits<T>::PRECISION()};
-    std::array<T, 2> initial_liquidity{T(0), T(0)};
+    PolicyConfig<uint256> policy_config{};
+    uint256 initial_price{PoolTraits<uint256>::PRECISION()};
+    std::array<uint256, 2> initial_liquidity{uint256(0), uint256(0)};
     uint64_t start_timestamp{0};
-    HistoricalState<T> historical_state{};
+    HistoricalState historical_state{};
 };
 
 struct Action {
@@ -116,59 +111,33 @@ inline void require_scalar(const json::value& value, const char* context) {
     }
 }
 
-template <typename T>
-T parse_config_plain(const json::value& value) {
+uint256 parse_config_plain(const json::value& value) {
     require_scalar(value, "pool config value");
-    if constexpr (std::is_same_v<T, uint256>) {
-        return uint256(scalar_to_string(value));
-    } else {
-        return static_cast<T>(parse_input_double(value));
-    }
+    return uint256(scalar_to_string(value));
 }
 
-template <typename T>
-T parse_config_wad(const json::value& value) {
+uint256 parse_config_wad(const json::value& value) {
     require_scalar(value, "pool config WAD value");
-    if constexpr (std::is_same_v<T, uint256>) {
-        return uint256(scalar_to_string(value));
-    } else {
-        return static_cast<T>(parse_input_double(value) / 1e18);
-    }
+    return uint256(scalar_to_string(value));
 }
 
-template <typename T>
-T parse_config_fee(const json::value& value) {
+uint256 parse_config_fee(const json::value& value) {
     require_scalar(value, "pool config fee value");
-    if constexpr (std::is_same_v<T, uint256>) {
-        return uint256(scalar_to_string(value));
-    } else {
-        return static_cast<T>(parse_input_double(value) / 1e10);
-    }
+    return uint256(scalar_to_string(value));
 }
 
-template <typename T>
-T parse_historical_wad(const json::value& value) {
+uint256 parse_historical_wad(const json::value& value) {
     require_scalar(value, "historical_state WAD value");
-    if constexpr (std::is_same_v<T, uint256>) {
-        return uint256(scalar_to_string(value));
-    } else {
-        return static_cast<T>(parse_input_double(value) / 1e18);
-    }
+    return uint256(scalar_to_string(value));
 }
 
-template <typename T>
-T parse_historical_plain(const json::value& value) {
+uint256 parse_historical_plain(const json::value& value) {
     require_scalar(value, "historical_state value");
-    if constexpr (std::is_same_v<T, uint256>) {
-        return uint256(scalar_to_string(value));
-    } else {
-        return static_cast<T>(parse_input_double(value));
-    }
+    return uint256(scalar_to_string(value));
 }
 
-template <typename T>
-PolicyConfig<T> parse_policy_config(const json::value& policy) {
-    PolicyConfig<T> config{};
+PolicyConfig<uint256> parse_policy_config(const json::value& policy) {
+    PolicyConfig<uint256> config{};
     if (policy.is_string()) {
         config.kind = arb::pools::twocrypto_fx::policy_kind_from_string(
             std::string(policy.as_string().c_str())
@@ -227,11 +196,7 @@ PolicyConfig<T> parse_policy_config(const json::value& policy) {
                     "pool policy params entries must be numbers or strings"
                 );
             }
-            if constexpr (std::is_same_v<T, uint256>) {
-                config.params[i] = uint256(scalar_to_string(values[i]));
-            } else {
-                config.params[i] = static_cast<T>(parse_input_double(values[i]));
-            }
+            config.params[i] = uint256(scalar_to_string(values[i]));
         }
         config.n_params = values.size();
     }
@@ -239,28 +204,23 @@ PolicyConfig<T> parse_policy_config(const json::value& policy) {
         if (!is_number_or_string(*fee)) {
             throw std::runtime_error("pool policy fee must be a string or number");
         }
-        config.fee = parse_config_fee<T>(*fee);
+        config.fee = parse_config_fee(*fee);
     } else if (auto* fee_bps = object.if_contains("fee_bps")) {
         if (!is_number_or_string(*fee_bps)) {
             throw std::runtime_error("pool policy fee_bps must be a string or number");
         }
-        if constexpr (std::is_same_v<T, uint256>) {
-            config.fee = uint256(scalar_to_string(*fee_bps)) *
-                PoolTraits<T>::FEE_PRECISION() / uint256(10000);
-        } else {
-            config.fee = static_cast<T>(parse_input_double(*fee_bps) / 10000.0);
-        }
+        config.fee = uint256(scalar_to_string(*fee_bps)) *
+                PoolTraits<uint256>::FEE_PRECISION() / uint256(10000);
     }
     return config;
 }
 
-template <typename T>
-HistoricalState<T> parse_historical_state(const json::value& value) {
+HistoricalState parse_historical_state(const json::value& value) {
     if (!value.is_object()) {
         throw std::runtime_error("pool historical_state must be an object");
     }
     const auto& object = value.as_object();
-    HistoricalState<T> state{};
+    HistoricalState state{};
     state.enabled = true;
     state.source_block = get_u64_opt(object, "source_block", 0);
     state.source_timestamp = get_u64_opt(object, "source_timestamp", 0);
@@ -274,55 +234,54 @@ HistoricalState<T> parse_historical_state(const json::value& value) {
             );
         }
         const auto& values = raw.as_array();
-        return std::array<T, 2>{
-            parse_historical_wad<T>(values[0]),
-            parse_historical_wad<T>(values[1]),
+        return std::array<uint256, 2>{
+            parse_historical_wad(values[0]),
+            parse_historical_wad(values[1]),
         };
     };
 
     state.balances = parse_pair("balances");
     state.admin_balances = parse_pair("admin_balances");
-    state.D = parse_historical_wad<T>(required_value(object, "D"));
-    state.total_supply = parse_historical_wad<T>(required_value(object, "total_supply"));
-    state.price_scale = parse_historical_wad<T>(required_value(object, "price_scale"));
-    state.price_oracle = parse_historical_wad<T>(required_value(object, "price_oracle"));
-    state.last_prices = parse_historical_wad<T>(required_value(object, "last_prices"));
+    state.D = parse_historical_wad(required_value(object, "D"));
+    state.total_supply = parse_historical_wad(required_value(object, "total_supply"));
+    state.price_scale = parse_historical_wad(required_value(object, "price_scale"));
+    state.price_oracle = parse_historical_wad(required_value(object, "price_oracle"));
+    state.last_prices = parse_historical_wad(required_value(object, "last_prices"));
     state.last_timestamp = get_u64_opt(object, "last_timestamp", 0);
-    state.virtual_price = parse_historical_wad<T>(required_value(object, "virtual_price"));
-    state.xcp_profit = parse_historical_wad<T>(required_value(object, "xcp_profit"));
-    state.lp_xcp_profit = parse_historical_wad<T>(required_value(object, "lp_xcp_profit"));
-    state.donation_shares = parse_historical_wad<T>(required_value(object, "donation_shares"));
-    state.last_donation_release_ts = parse_historical_plain<T>(required_value(object, "last_donation_release_ts"));
-    state.donation_protection_expiry_ts = parse_historical_plain<T>(required_value(object, "donation_protection_expiry_ts"));
-    state.donation_protection_period = parse_historical_plain<T>(required_value(object, "donation_protection_period"));
-    state.donation_protection_lp_threshold = parse_historical_wad<T>(required_value(object, "donation_protection_lp_threshold"));
-    state.donation_protection_extension_remainder = parse_historical_wad<T>(required_value(object, "donation_protection_extension_remainder"));
-    state.donation_shares_max_ratio = parse_historical_wad<T>(required_value(object, "donation_shares_max_ratio"));
+    state.virtual_price = parse_historical_wad(required_value(object, "virtual_price"));
+    state.xcp_profit = parse_historical_wad(required_value(object, "xcp_profit"));
+    state.lp_xcp_profit = parse_historical_wad(required_value(object, "lp_xcp_profit"));
+    state.donation_shares = parse_historical_wad(required_value(object, "donation_shares"));
+    state.last_donation_release_ts = parse_historical_plain(required_value(object, "last_donation_release_ts"));
+    state.donation_protection_expiry_ts = parse_historical_plain(required_value(object, "donation_protection_expiry_ts"));
+    state.donation_protection_period = parse_historical_plain(required_value(object, "donation_protection_period"));
+    state.donation_protection_lp_threshold = parse_historical_wad(required_value(object, "donation_protection_lp_threshold"));
+    state.donation_protection_extension_remainder = parse_historical_wad(required_value(object, "donation_protection_extension_remainder"));
+    state.donation_shares_max_ratio = parse_historical_wad(required_value(object, "donation_shares_max_ratio"));
 
     if (state.source_timestamp == 0 || state.last_timestamp == 0) {
         throw std::runtime_error("pool historical_state requires nonzero source_timestamp and last_timestamp");
     }
-    if (!(state.D > T(0)) || !(state.total_supply > T(0)) ||
-        !(state.price_scale > T(0)) || !(state.price_oracle > T(0)) ||
-        !(state.virtual_price > T(0))) {
+    if (!(state.D > uint256(0)) || !(state.total_supply > uint256(0)) ||
+        !(state.price_scale > uint256(0)) || !(state.price_oracle > uint256(0)) ||
+        !(state.virtual_price > uint256(0))) {
         throw std::runtime_error("pool historical_state requires positive D, supply, prices, and virtual_price");
     }
     return state;
 }
 
-template <typename T>
-PoolConfig<T> parse_pool_config(const json::object& object) {
-    PoolConfig<T> config{};
+PoolConfig parse_pool_config(const json::object& object) {
+    PoolConfig config{};
     config.name = get_str(object, "name");
 
     const auto parse_plain = [&](const char* key) {
-        return parse_config_plain<T>(required_value(object, key));
+        return parse_config_plain(required_value(object, key));
     };
     const auto parse_wad = [&](const char* key) {
-        return parse_config_wad<T>(required_value(object, key));
+        return parse_config_wad(required_value(object, key));
     };
     const auto parse_fee = [&](const char* key) {
-        return parse_config_fee<T>(required_value(object, key));
+        return parse_config_fee(required_value(object, key));
     };
 
     config.A = parse_plain("A");
@@ -341,13 +300,13 @@ PoolConfig<T> parse_pool_config(const json::object& object) {
     config.adjustment_step_max = parse_wad("adjustment_step_max");
     config.ma_time = parse_plain("ma_time");
     if (auto* value = object.if_contains("reserved_profit_fraction")) {
-        config.reserved_profit_fraction = parse_config_fee<T>(*value);
+        config.reserved_profit_fraction = parse_config_fee(*value);
     }
     if (auto* value = object.if_contains("admin_fee")) {
-        config.admin_fee = parse_config_fee<T>(*value);
+        config.admin_fee = parse_config_fee(*value);
     }
     if (auto* value = object.if_contains("policy")) {
-        config.policy_config = parse_policy_config<T>(*value);
+        config.policy_config = parse_policy_config(*value);
         config.policy_kind = config.policy_config.kind;
     }
     config.initial_price = parse_wad("initial_price");
@@ -361,18 +320,18 @@ PoolConfig<T> parse_pool_config(const json::object& object) {
         throw std::runtime_error("initial_liquidity must be [str,str]");
     }
     config.initial_liquidity = {
-        parse_config_wad<T>(values[0]),
-        parse_config_wad<T>(values[1]),
+        parse_config_wad(values[0]),
+        parse_config_wad(values[1]),
     };
 
     if (auto* value = object.if_contains("start_timestamp")) {
-        config.start_timestamp = static_cast<uint64_t>(parse_config_plain<T>(*value));
+        config.start_timestamp = static_cast<uint64_t>(parse_config_plain(*value));
         if (config.start_timestamp > 10000000000ULL) {
             config.start_timestamp /= 1000ULL;
         }
     }
     if (auto* value = object.if_contains("historical_state")) {
-        config.historical_state = parse_historical_state<T>(*value);
+        config.historical_state = parse_historical_state(*value);
         if (config.start_timestamp != 0 &&
             config.start_timestamp < config.historical_state.source_timestamp) {
             throw std::runtime_error("pool start_timestamp predates historical_state source_timestamp");
@@ -394,16 +353,14 @@ PoolConfig<T> parse_pool_config(const json::object& object) {
     return config;
 }
 
-template <typename T>
-PoolConfig<T> parse_pool_config(const json::value& value) {
+PoolConfig parse_pool_config(const json::value& value) {
     if (!value.is_object()) {
         throw std::runtime_error("pool config must be an object");
     }
-    return parse_pool_config<T>(value.as_object());
+    return parse_pool_config(value.as_object());
 }
 
-template <typename T>
-TwoCryptoPool<T> make_pool(const PoolConfig<T>& config, const ActionSequence& sequence) {
+TwoCryptoPool<uint256> make_pool(const PoolConfig& config, const ActionSequence& sequence) {
     const uint64_t start_ts = sequence.start_timestamp != 0
         ? sequence.start_timestamp
         : config.start_timestamp;
@@ -412,7 +369,7 @@ TwoCryptoPool<T> make_pool(const PoolConfig<T>& config, const ActionSequence& se
         start_ts < config.historical_state.source_timestamp) {
         throw std::runtime_error("run start precedes historical pool checkpoint");
     }
-    TwoCryptoPool<T> pool(
+    TwoCryptoPool<uint256> pool(
         config.precisions,
         config.A,
         config.gamma,
@@ -453,13 +410,13 @@ TwoCryptoPool<T> make_pool(const PoolConfig<T>& config, const ActionSequence& se
         pool.donation_protection_extension_remainder = state.donation_protection_extension_remainder;
         pool.donation_shares_max_ratio = state.donation_shares_max_ratio;
         pool.cached_ema_dt = 0;
-        pool.cached_ema_alpha = T(0);
+        pool.cached_ema_alpha = uint256(0);
         pool.cached_ema_alpha_valid = false;
         pool.initialize_policy_state_from_pool();
     } else {
         (void)pool.add_liquidity(
             config.initial_liquidity,
-            PoolTraits<T>::ZERO(),
+            PoolTraits<uint256>::ZERO(),
             /*donation=*/false
         );
     }
@@ -547,13 +504,5 @@ inline ActionSequence parse_action_sequence(const json::object& object) {
     return sequence;
 }
 
-template <typename T>
-T parse_action_wad(const std::string& value) {
-    if constexpr (std::is_same_v<T, uint256>) {
-        return uint256(value);
-    } else {
-        return static_cast<T>(std::strtold(value.c_str(), nullptr) / 1e18L);
-    }
-}
 
 } // namespace arb::parity

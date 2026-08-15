@@ -38,7 +38,7 @@ The policy macro is private to the final executable. The public target remains a
 
 ## Reference and audit record
 
-`reference/twocrypto-ng` is pinned to revision `2c645ca604a4a0878e08f2f1581e5c4ae1c8f8d4` from `https://github.com/curvefi/twocrypto-ng.git`. `reference/REVISION` is the human-readable attestation record; retain its value with parity results. A useful audit bundle records:
+`reference/twocrypto-ng` tracks `invariant-change` and is pinned to revision `2457f36093568252601dd92a299f09517d93b3ba` from `https://github.com/curvefi/twocrypto-ng.git`. `reference/REVISION` is the human-readable branch and revision attestation record; retain its value with parity results. A useful audit bundle records:
 
 - pool Git revision and `reference/REVISION`;
 - compiler ID/version, CMake build type, uint256 target name, and harness identity;

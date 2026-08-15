@@ -96,7 +96,7 @@ cmake --build build/parity --target benchmark_harness_i --parallel
 
 ## Provenance, audit, and data posture
 
-The Vyper reference is the `reference/twocrypto-ng` Git submodule at revision `2c645ca604a4a0878e08f2f1581e5c4ae1c8f8d4` from `https://github.com/curvefi/twocrypto-ng.git`, recorded in `reference/REVISION`. Keep this submodule revision with any parity report. A report should record the pool revision, compiler/build mode, uint256 harness identity, policy-header digest when applicable, and the explicit input paths used for the run.
+The Vyper reference is the `reference/twocrypto-ng` Git submodule tracking `invariant-change`, pinned at revision `2457f36093568252601dd92a299f09517d93b3ba` from `https://github.com/curvefi/twocrypto-ng.git`, and recorded in `reference/REVISION`. Keep the branch and pinned revision with any parity report. A report should record the pool revision, compiler/build mode, uint256 harness identity, policy-header digest when applicable, and the explicit input paths used for the run.
 
 This private repository does not grant redistribution rights for source, policy fixtures, or reference data. Do not publish or copy private data without maintainer authorization; treat a missing or unavailable submodule/data checkout as an access/provenance issue rather than substituting another reference.
 

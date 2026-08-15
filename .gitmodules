@@ -1,3 +1,4 @@
 [submodule "reference/twocrypto-ng"]
 	path = reference/twocrypto-ng
 	url = https://github.com/curvefi/twocrypto-ng.git
+	branch = invariant-change

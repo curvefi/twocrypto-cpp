@@ -55,6 +55,25 @@ bool cacheable = pool.quote_cache_safe();
 
 `PolicyKind::Compiled` is a final-executable extension point. A final executable may define `TWOCRYPTO_POLICY_HEADER` to a regular header that provides the source contract's `ChallengeFeePolicy<T>` in `arb::pools::twocrypto_fx`. The pool retains clamping, step limiting, LP protection, rollback, and actuator authority. Without a selected header, `pools/twocrypto_fx/policies/compiled_passthrough.hpp` delegates to native surfaces.
 
+The checked-in `include/pools/twocrypto_fx/policies/yieldbasis.hpp` is the exact
+`uint256` translation of the pinned `YBTwocryptoPolicy.vy`. Build both parity
+adapters against it and run the 59 upstream policy cases plus the
+pool-integrated state comparison:
+
+```sh
+cmake -S . -B build/yb-parity -DCMAKE_BUILD_TYPE=Release \
+  -DTWOCRYPTO_POOL_BUILD_TESTS=ON \
+  -DTWOCRYPTO_POOL_BUILD_BENCHMARKS=ON \
+  -DTWOCRYPTO_POOL_POLICY_PATH="$PWD/include/pools/twocrypto_fx/policies/yieldbasis.hpp"
+cmake --build build/yb-parity \
+  --target yb_policy_evaluator_i benchmark_harness_i --parallel
+TWOCRYPTO_YB_EVALUATOR="$PWD/build/yb-parity/yb_policy_evaluator_i" \
+TWOCRYPTO_HARNESS_I="$PWD/build/yb-parity/benchmark_harness_i" \
+  uv run --frozen --no-sync pytest -q -o addopts='' \
+  tests/test_yb_policy_parity.py \
+  tests/test_boa_parity_fxswap_ext_fee.py::test_boa_cpp_pool_integrated_yb_policy_parity
+```
+
 For the private exact-integer parity harness, configure the committed deterministic policy fixture and its digest:
 
 ```sh

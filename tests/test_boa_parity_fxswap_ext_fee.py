@@ -189,3 +189,77 @@ def test_boa_cpp_uint256_parity_for_fxswap_ext_fee_policy_modes(tmp_path: Path) 
                 cpp_states[pool_name][action_idx - 1] if action_idx else cpp,
                 boa_states[pool_name][action_idx - 1] if action_idx else boa,
             )
+
+
+def test_boa_cpp_pool_integrated_yb_policy_parity(tmp_path: Path) -> None:
+    _require_cpp_harness()
+    pool = _pool("policy_yieldbasis", "compiled")
+    pool["policy"] = {
+        "kind": "compiled",
+        "reference_kind": "yb_twocrypto_policy",
+        "params": [
+            "3600",
+            "7200",
+            "2000000000000000000",
+            "0",
+            "100000000000000",
+            "6000000000000000",
+        ],
+    }
+    sequence = {
+        "seed": 17,
+        "sequences": [{
+            "name": "yieldbasis_pool_update_and_scale_target",
+            "start_timestamp": 1700000000,
+            "actions": [
+                {
+                    "type": "exchange",
+                    "i": 0,
+                    "j": 1,
+                    "dx": "1000000000000000000000",
+                },
+                {"type": "time_travel", "seconds": 1800},
+                {
+                    "type": "exchange",
+                    "i": 1,
+                    "j": 0,
+                    "dx": "100000000000000000000",
+                },
+                {"type": "time_travel", "seconds": 1800},
+                {
+                    "type": "add_liquidity",
+                    "amounts": ["1000000000000000000", "1000000000000000000"],
+                },
+                {
+                    "type": "exchange",
+                    "i": 0,
+                    "j": 1,
+                    "dx": "100000000000000000000",
+                },
+            ],
+        }],
+    }
+    pools_path, sequences_path, cpp_output, boa_output = (
+        tmp_path / name
+        for name in ("yb-pools.json", "yb-sequences.json", "yb-cpp.json", "yb-boa.json")
+    )
+    _write_json(pools_path, {"seed": 17, "pools": [pool]})
+    _write_json(sequences_path, sequence)
+    cpp_states = _states_by_pool(_run_cpp(pools_path, sequences_path, cpp_output))
+    boa_states = _states_by_pool(
+        run_vyper_pool(str(pools_path), str(sequences_path), str(boa_output))
+    )
+    assert set(cpp_states) == set(boa_states) == {"policy_yieldbasis"}
+    actions = sequence["sequences"][0]["actions"]
+    for action_idx, (cpp, boa) in enumerate(
+        zip(cpp_states["policy_yieldbasis"], boa_states["policy_yieldbasis"])
+    ):
+        _assert_state_equal(
+            "policy_yieldbasis",
+            action_idx,
+            actions[action_idx - 1] if action_idx else {"type": "initial"},
+            cpp,
+            boa,
+            cpp_states["policy_yieldbasis"][action_idx - 1] if action_idx else cpp,
+            boa_states["policy_yieldbasis"][action_idx - 1] if action_idx else boa,
+        )

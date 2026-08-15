@@ -96,7 +96,7 @@ class VyperPoolRunner:
             return str(policy.get("kind", "none"))
         return "none"
 
-    def _deploy_policy(self, kind: str, pool: Any) -> Any:
+    def _deploy_policy(self, kind: str, pool: Any, spec: dict[str, Any]) -> Any:
         if kind in ("", "none"):
             return None
         if kind == "twocrypto_policy":
@@ -106,13 +106,25 @@ class VyperPoolRunner:
         if kind in ("oracle_x2", "price_oracle_x2", "oracle_x2_sequential_fee"):
             policy_path = Path(__file__).with_name("vyper_pool") / "oracle_x2_sequential_fee_policy.vy"
             return boa.load(str(policy_path), pool.address)
+        if kind == "compiled" and spec.get("reference_kind") == "yb_twocrypto_policy":
+            values = spec.get("params")
+            if not isinstance(values, list) or len(values) != 6:
+                raise ValueError("YBTwocryptoPolicy reference requires exactly 6 params")
+            return boa.load(
+                str(self._contract("contracts/main/YBTwocryptoPolicy.vy")),
+                pool.address,
+                *(int(value) for value in values),
+            )
         raise ValueError(f"unsupported policy kind: {kind}")
 
     def configure_pool(self, pool: Any, params: dict[str, Any]) -> None:
         reserved_profit_fraction = int(params.get("reserved_profit_fraction", 5 * 10**9))
         admin_fee = int(params.get("admin_fee", 5 * 10**9))
+        policy_spec = params.get("policy", {})
+        if not isinstance(policy_spec, dict):
+            policy_spec = {}
         policy_kind = self._policy_kind(params)
-        policy = self._deploy_policy(policy_kind, pool)
+        policy = self._deploy_policy(policy_kind, pool, policy_spec)
         zero = "0x0000000000000000000000000000000000000000"
         with boa.env.prank(self.owner):
             pool.set_fee_parameters(reserved_profit_fraction, admin_fee)

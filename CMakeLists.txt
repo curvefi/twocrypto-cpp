@@ -134,6 +134,12 @@ if(TWOCRYPTO_POOL_BUILD_BENCHMARKS)
 endif()
 
 if(TWOCRYPTO_POOL_BUILD_TESTS)
+find_package(Boost 1.79 REQUIRED COMPONENTS json)
+
+add_executable(yb_policy_evaluator_i tests/yb_policy_evaluator.cpp)
+target_link_libraries(yb_policy_evaluator_i PRIVATE twocrypto::pool Boost::json)
+pool_private_defaults(yb_policy_evaluator_i)
+
 
 # The snapshot test is supplied by the pool product and is intentionally
 # conditional so package consumers may install headers without test sources.

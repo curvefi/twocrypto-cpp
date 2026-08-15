@@ -160,7 +160,8 @@ PolicyConfig<uint256> parse_policy_config(const json::value& policy) {
     const auto& object = policy.as_object();
     for (const auto& entry : object) {
         const std::string_view key(entry.key().data(), entry.key().size());
-        if (key == "kind" || key == "price_source" || key == "params" ||
+        if (key == "kind" || key == "reference_kind" ||
+            key == "price_source" || key == "params" ||
             key == "fee" || key == "fee_bps") {
             continue;
         }

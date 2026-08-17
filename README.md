@@ -33,7 +33,7 @@ cmake -S /path/to/consumer -B /tmp/twocrypto-consumer-build \
 cmake --build /tmp/twocrypto-consumer-build --parallel
 ```
 
-The install tree contains `twocrypto_poolConfig.cmake`, headers, and the `twocrypto::pool` target. It does not require this source checkout, private adapters, Boost.JSON, threads, OpenSSL, or a concrete compiled policy.
+The install tree contains `twocrypto_poolConfig.cmake`, headers, and the `twocrypto::pool` target. It does not require this source checkout, Python parity dependencies, or a concrete compiled policy.
 
 ## C++ API and transaction snapshots
 
@@ -74,17 +74,9 @@ TWOCRYPTO_HARNESS_I="$PWD/build/yb-parity/benchmark_harness_i" \
   tests/test_boa_parity_fxswap_ext_fee.py::test_boa_cpp_pool_integrated_yb_policy_parity
 ```
 
-For the private exact-integer parity harness, configure the committed deterministic policy fixture and its digest:
-
-```sh
-cmake -S . -B build/policy -DCMAKE_BUILD_TYPE=Release \
-  -DTWOCRYPTO_POOL_BUILD_BENCHMARKS=ON \
-  -DTWOCRYPTO_POOL_POLICY_PATH="$PWD/fixtures/test_compiled_policy.hpp" \
-  -DTWOCRYPTO_POOL_POLICY_SHA256=18fdfe021e6029b4b3f744c07867cdd031024249c268501667882d556121acf8
-cmake --build build/policy --target benchmark_harness_i --parallel
-```
-
-CMake resolves a regular file, hashes its exact bytes, rejects a supplied digest mismatch, and makes configuration depend on the file. Policy macros and identity fields are private to the final executable and never become an interface property of `twocrypto_pool`. Concrete orchestrator profiles are documented in that repository, not copied here.
+CMake hashes the selected policy header and accepts
+`TWOCRYPTO_POOL_POLICY_SHA256` when callers need to pin its exact bytes.
+Policy macros and identity fields remain private to the final executable.
 
 ## Python parity
 
@@ -101,22 +93,17 @@ TWOCRYPTO_BUILD_ROOT="$PWD/build/parity" \
   /path/to/pools.json /path/to/sequences.json --out /tmp/cpp.json
 ```
 
-The high-value authority test constructs its pool and action inputs in a temporary directory, so no generated fixtures are committed. The only retained fixture is `fixtures/test_compiled_policy.hpp`, used for policy-header attestation.
-
-The exact harness is the sole private adapter:
-
-```sh
-cmake -S . -B build/parity -DCMAKE_BUILD_TYPE=Release \
-  -DTWOCRYPTO_POOL_BUILD_BENCHMARKS=ON
-cmake --build build/parity --target benchmark_harness_i --parallel
-```
-
-`benchmark_harness_i` is the uint256 adapter and emits exact decimal state snapshots.
+`benchmark_harness_i` emits exact decimal state snapshots. Authority tests
+create all pool and action inputs in temporary directories.
 
 ## Provenance, audit, and data posture
 
-The Vyper reference is the `reference/twocrypto-ng` Git submodule tracking `invariant-change`, pinned at revision `2457f36093568252601dd92a299f09517d93b3ba` from `https://github.com/curvefi/twocrypto-ng.git`, and recorded in `reference/REVISION`. Keep the branch and pinned revision with any parity report. A report should record the pool revision, compiler/build mode, uint256 harness identity, policy-header digest when applicable, and the explicit input paths used for the run.
+The Vyper authority is the `reference/twocrypto-ng` Git submodule. Its tracked
+gitlink commit is the revision record; `.gitmodules` records the upstream URL
+and `invariant-change` branch. Parity reports should retain the pool revision,
+submodule revision, compiler/build mode, harness identity, selected-policy
+digest, and explicit input paths.
 
-This private repository does not grant redistribution rights for source, policy fixtures, or reference data. Do not publish or copy private data without maintainer authorization; treat a missing or unavailable submodule/data checkout as an access/provenance issue rather than substituting another reference.
+This private repository does not grant redistribution rights for its source or pinned reference. Obtain maintainer authorization before sharing either; never substitute an unpinned checkout for an unavailable reference.
 
 The pool boundary is deliberately narrow: install this SDK first; the harness consumes the installed target, and the orchestrator supplies concrete profiles and all workflows. Do not use historical checkout names or source-relative include paths as runtime dependencies.

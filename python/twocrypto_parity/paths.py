@@ -57,16 +57,3 @@ def build_root(override: str | os.PathLike[str] | None = None, *, core: str | os
             "or pass an explicit override"
         )
     return path
-
-
-def contract_path(
-    name: str,
-    *,
-    reference: str | os.PathLike[str] | None = None,
-    core: str | os.PathLike[str] | None = None,
-) -> Path:
-    """Resolve a pinned reference contract by relative path."""
-    path = reference_root(reference, core=core) / name
-    if not path.is_file():
-        raise FileNotFoundError(f"reference contract does not exist: {path}")
-    return path

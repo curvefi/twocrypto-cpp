@@ -203,6 +203,7 @@ class VyperPoolRunner:
             "price_oracle": str(cached_price_oracle),
             "last_prices": str(pool.last_prices()),
             "totalSupply": str(pool.totalSupply()),
+            "caller_lp_balance": str(pool.balanceOf(boa.env.eoa)),
             "timestamp": boa.env.timestamp,
             "donation_shares": str(donation_shares),
             "donation_shares_unlocked": str(unlocked),
@@ -223,6 +224,10 @@ class VyperPoolRunner:
             error: str | None = None
             action_result: str | None = None
             try:
+                if {"account", "caller", "sender", "receiver"} & action.keys():
+                    raise ValueError(
+                        "per-account actions are unsupported; parity uses one persistent caller"
+                    )
                 kind = action["type"]
                 if kind == "exchange":
                     token = token0 if action["i"] == 0 else token1

@@ -15,8 +15,9 @@ from twocrypto_parity.vyper_pool_runner import run_vyper_pool
 STATE_FIELDS = (
     "balances", "admin_balances", "xp", "D", "virtual_price", "xcp_profit",
     "lp_xcp_profit", "price_scale", "price_oracle", "last_prices", "totalSupply",
+    "caller_lp_balance",
     "donation_shares", "donation_shares_unlocked", "donation_protection_expiry_ts",
-    "last_admin_fee_claim_timestamp", "timestamp",
+    "last_donation_release_ts", "last_admin_fee_claim_timestamp", "timestamp",
 )
 
 
@@ -77,6 +78,14 @@ def _sequence() -> dict:
                     "amounts": ["1000000000000000000000000", "1000000000000000000000000"],
                     "donation": True,
                 },
+                {
+                    "type": "remove_liquidity_fixed_out",
+                    "token_amount": "100000000000000000000000",
+                    "i": 0,
+                    "amount_i": "1",
+                    "min_amount_j": "0",
+                },
+                {"type": "remove_liquidity", "amount": "1", "caller": "other"},
                 {"type": "time_travel", "seconds": 3600},
                 {
                     "type": "remove_liquidity_fixed_out",

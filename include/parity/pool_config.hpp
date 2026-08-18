@@ -468,6 +468,13 @@ inline Action parse_action(const json::value& value) {
     }
     const auto& object = value.as_object();
     try {
+        for (const char* key : {"account", "caller", "sender", "receiver"}) {
+            if (object.if_contains(key) != nullptr) {
+                throw std::runtime_error(
+                    "per-account actions are unsupported; parity uses one persistent caller"
+                );
+            }
+        }
         action.type = get_str(object, "type");
         if (action.type == "exchange") {
             action.i = required_i64(object, "i");

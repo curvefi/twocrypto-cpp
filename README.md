@@ -34,6 +34,9 @@ cmake --build /tmp/twocrypto-consumer-build --parallel
 ```
 
 The install tree contains `twocrypto_poolConfig.cmake`, headers, and the `twocrypto::pool` target. It does not require this source checkout, Python parity dependencies, or a concrete compiled policy.
+The fixed-fee, sequential, and YieldBasis policy implementations are private
+parity fixtures and are not installed. The public target retains the native
+pool policy, policy ABI, and compiled-policy passthrough.
 
 ## C++ API and transaction snapshots
 
@@ -83,6 +86,9 @@ Policy macros and identity fields remain private to the final executable.
 Install the pinned Python environment with `uv sync --frozen --extra test`. The lockfile pins Vyper 0.4.3, titanoboa 0.2.8, snekmate 0.1.2, and pytest 8.4.1.
 
 The package exposes one exact parity route through `twocrypto_parity.cpp_pool_runner`; it invokes an already-built `benchmark_harness_i` and never configures or writes into the source tree. The Boa adapter is used by the authority test to compare the same deterministic action sequence against the pinned reference.
+The action domain has one persistent LP caller. Per-account sender/receiver
+fields fail closed; snapshots compare that caller's LP balance as well as pool
+state.
 
 ```sh
 cmake -S . -B build/parity -DCMAKE_BUILD_TYPE=Release \

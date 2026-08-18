@@ -68,6 +68,7 @@ json::object snapshot_pool(const TwoCryptoPool<uint256>& pool) {
     o["price_oracle"] = to_wei_string(pool.cached_price_oracle);
     o["last_prices"] = to_wei_string(pool.last_prices);
     o["totalSupply"] = to_wei_string(pool.totalSupply);
+    o["caller_lp_balance"] = to_wei_string(pool.single_caller_lp_balance());
     o["timestamp"] = pool.block_timestamp;
 
     o["donation_shares"] = to_wei_string(pool.donation_shares);

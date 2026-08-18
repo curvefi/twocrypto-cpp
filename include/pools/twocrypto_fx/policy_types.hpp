@@ -33,17 +33,29 @@ inline PolicyKind policy_kind_from_string(const std::string& kind) {
         return PolicyKind::TwocryptoPolicy;
     }
     if (kind == "zero_stub") {
+#ifndef TWOCRYPTO_ENABLE_PARITY_POLICIES
+        throw std::invalid_argument("zero_stub is a parity-only policy kind");
+#else
         return PolicyKind::ZeroStub;
+#endif
     }
     if (
         kind == "oracle_x2" ||
         kind == "price_oracle_x2" ||
         kind == "oracle_x2_sequential_fee"
     ) {
+#ifndef TWOCRYPTO_ENABLE_PARITY_POLICIES
+        throw std::invalid_argument("oracle_x2 is a parity-only policy kind");
+#else
         return PolicyKind::OracleX2SequentialFee;
+#endif
     }
     if (kind == "fixed_fee" || kind == "fixed_fee_policy") {
+#ifndef TWOCRYPTO_ENABLE_PARITY_POLICIES
+        throw std::invalid_argument("fixed_fee is a parity-only policy kind");
+#else
         return PolicyKind::FixedFee;
+#endif
     }
     if (kind == "compiled") {
 #ifdef TWOCRYPTO_POLICY_HEADER

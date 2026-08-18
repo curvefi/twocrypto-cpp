@@ -130,6 +130,8 @@ if(TWOCRYPTO_POOL_BUILD_BENCHMARKS)
     target_link_libraries(benchmark_harness_i PRIVATE
         twocrypto::pool Boost::json Threads::Threads)
     pool_private_defaults(benchmark_harness_i)
+    target_compile_definitions(benchmark_harness_i PRIVATE
+        TWOCRYPTO_ENABLE_PARITY_POLICIES=1)
     pool_target_compiled_policy(benchmark_harness_i)
 endif()
 
@@ -148,13 +150,18 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_pool_snapshot.cpp")
     add_executable(test_pool_snapshot tests/test_pool_snapshot.cpp)
     target_link_libraries(test_pool_snapshot PRIVATE twocrypto::pool)
     pool_private_defaults(test_pool_snapshot)
+    target_compile_definitions(test_pool_snapshot PRIVATE
+        TWOCRYPTO_ENABLE_PARITY_POLICIES=1)
     add_test(NAME test_pool_snapshot COMMAND test_pool_snapshot)
 endif()
 
 endif()
 
 install(DIRECTORY include/pools/twocrypto_fx/
-    DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/pools/twocrypto_fx")
+    DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/pools/twocrypto_fx"
+    PATTERN "fixed.hpp" EXCLUDE
+    PATTERN "sequential.hpp" EXCLUDE
+    PATTERN "yieldbasis.hpp" EXCLUDE)
 install(TARGETS twocrypto_pool EXPORT twocrypto_poolTargets)
 install(EXPORT twocrypto_poolTargets
     FILE twocrypto_poolTargets.cmake

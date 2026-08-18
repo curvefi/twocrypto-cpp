@@ -323,6 +323,27 @@ void test_failed_add_is_atomic() {
     );
 }
 
+void test_fixed_out_cannot_burn_pool_owned_lp() {
+    Pool pool = make_pool(fx::PolicyKind::None);
+    pool.add_liquidity({1'000'000.0, 1'000'000.0}, 0.0);
+    pool.add_liquidity({50'000.0, 50'000.0}, 0.0, true);
+    const Pool before = pool;
+
+    bool threw = false;
+    try {
+        (void)pool.remove_liquidity_fixed_out(
+            pool.single_caller_lp_balance() + 1.0, 0, 1.0, 0.0
+        );
+    } catch (const std::runtime_error&) {
+        threw = true;
+    }
+    require(threw, "fixed-out withdrawal burned pool-owned LP");
+    require(
+        same_mutable_state(pool, before),
+        "failed fixed-out ownership check leaked mutable state"
+    );
+}
+
 } // namespace
 
 int main() {
@@ -332,5 +353,6 @@ int main() {
     test_unsupported_policy_snapshot_kind_rejects();
     test_quote_cache_safety_matrix();
     test_failed_add_is_atomic();
+    test_fixed_out_cannot_burn_pool_owned_lp();
     return 0;
 }

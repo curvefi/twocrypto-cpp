@@ -8,13 +8,76 @@
 #include <utility>
 #include <variant>
 #include "policies/compiled.hpp"
-#include "policies/fixed.hpp"
 #include "policies/native.hpp"
+#ifdef TWOCRYPTO_ENABLE_PARITY_POLICIES
+#include "policies/fixed.hpp"
 #include "policies/sequential.hpp"
+#endif
 
 namespace arb {
 namespace pools {
 namespace twocrypto_fx {
+
+#ifndef TWOCRYPTO_ENABLE_PARITY_POLICIES
+template <typename T>
+struct ZeroPolicy {
+    struct State {};
+
+    static T get_fee(
+        const State&, const PolicyConfig<T>&, const PolicyPoolConfig<T>&,
+        const PolicyResearchContext<T>&, const std::array<T, 2>&
+    ) {
+        return T(0);
+    }
+
+    static T get_price_scale(
+        State&, PolicyResearchContext<T>&, const PolicyConfig<T>&,
+        const PolicyPoolConfig<T>&
+    ) {
+        return T(0);
+    }
+
+    static void update_state(
+        State&, PolicyResearchContext<T>&, const PolicyConfig<T>&,
+        const PolicyPoolConfig<T>&, const PolicyUpdate<T>&
+    ) {}
+};
+
+template <typename T, int Tag>
+struct DisabledParityPolicy {
+    struct State {};
+
+    [[noreturn]] static void unavailable() {
+        throw std::logic_error("parity-only policy is unavailable in the public SDK");
+    }
+
+    static T get_fee(
+        const State&, const PolicyConfig<T>&, const PolicyPoolConfig<T>&,
+        const PolicyResearchContext<T>&, const std::array<T, 2>&
+    ) {
+        unavailable();
+    }
+
+    static T get_price_scale(
+        State&, PolicyResearchContext<T>&, const PolicyConfig<T>&,
+        const PolicyPoolConfig<T>&
+    ) {
+        unavailable();
+    }
+
+    static void update_state(
+        State&, PolicyResearchContext<T>&, const PolicyConfig<T>&,
+        const PolicyPoolConfig<T>&, const PolicyUpdate<T>&
+    ) {
+        unavailable();
+    }
+};
+
+template <typename T>
+using FixedFeePolicy = DisabledParityPolicy<T, 0>;
+template <typename T>
+using OracleX2SequentialFeePolicy = DisabledParityPolicy<T, 1>;
+#endif
 
 template <typename T, typename PolicyT, typename = void>
 struct HasPolicyPriceScaleTarget : std::false_type {};

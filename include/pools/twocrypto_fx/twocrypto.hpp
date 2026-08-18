@@ -1324,14 +1324,22 @@ public:
 
     // remove_liquidity: burn LP to withdraw proportionally (no fees, no
     // tweak_price - mirrors vy's math-free safe withdrawal)
+    T single_caller_lp_balance() const {
+        if (totalSupply < donation_shares) return Traits::ZERO();
+        const T issued_to_accounts = totalSupply - donation_shares;
+        if (issued_to_accounts < Traits::MINIMUM_LIQUIDITY()) {
+            return Traits::ZERO();
+        }
+        return issued_to_accounts - Traits::MINIMUM_LIQUIDITY();
+    }
+
     std::array<T, 2> remove_liquidity(
         T amount,
         const std::array<T, 2>& min_amounts
     ) {
-        // vy burns from the caller's balance; donation shares and the
-        // MINIMUM_LIQUIDITY dead shares are owned by no account, so at most
-        // totalSupply - donation_shares - MINIMUM_LIQUIDITY is burnable.
-        if (totalSupply < amount + donation_shares + Traits::MINIMUM_LIQUIDITY()) {
+        // The parity adapter has one persistent caller. Donation shares and
+        // MINIMUM_LIQUIDITY belong to the pool, not that caller.
+        if (amount > single_caller_lp_balance()) {
             throw std::invalid_argument("insufficient LP tokens");
         }
 
@@ -1398,7 +1406,7 @@ public:
             if (idx_i >= N_COINS) {
                 throw std::invalid_argument("coin index out of range");
             }
-            if (token_amount > totalSupply) {
+            if (token_amount > single_caller_lp_balance()) {
                 throw std::runtime_error("!amount");
             }
             const size_t idx_j = 1 - idx_i;

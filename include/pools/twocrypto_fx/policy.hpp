@@ -215,7 +215,7 @@ public:
     typename ChallengeFeePolicy<T>::State compiled_state{};
 
     // Transaction-preview rollback needs only the active policy's mutable
-    // state. PolicyConfig owns a 1024-element parameter array and
+    // state. PolicyConfig owns a 64-element parameter array and
     // PolicyPoolConfig is immutable after pool construction, so copying either
     // object (or inactive policy states) on every speculative route is both
     // unnecessary and expensive.

@@ -383,7 +383,9 @@ public:
     }
 
     bool uses_native_fee_model() const noexcept {
-        return policy.kind == PolicyKind::None;
+        return policy.kind == PolicyKind::None ||
+            (policy.kind == PolicyKind::Compiled &&
+             compiled_detail::quote_cache_safe);
     }
 
 
@@ -1766,7 +1768,7 @@ public:
                 if (keeper_probe->policy_owned) {
                     // The product policy's keeper view projects its pending
                     // EMAs algebraically. Avoid copying PolicyModel here:
-                    // PolicyConfig contains a 1024-element params array.
+                    // PolicyConfig contains a 64-element params array.
                     const auto decision = policy.keeper_decision_at(
                         block_timestamp,
                         price_oracle

@@ -176,6 +176,7 @@ void test_floating_ema_uses_pool_type() {
 }
 
 void test_descriptor_api() {
+    static_assert(fx::PolicyConfig<double>::MAX_POLICY_PARAMS == 64);
     constexpr fx::PolicyDescriptor<1> descriptor{
         "bounded_probe",
         {{{"half_life", 0, "seconds",

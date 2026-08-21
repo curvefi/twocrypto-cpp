@@ -1,7 +1,7 @@
 [project]
 name = "twocrypto-cpp"
 version = "0.1.0"
-description = "Installable header-only TwoCrypto pool SDK with exact Vyper parity route"
+description = "Checkout-local header-only TwoCrypto pool with exact Vyper parity route"
 requires-python = ">=3.12,<3.13"
 dependencies = [
   "titanoboa==0.2.8",

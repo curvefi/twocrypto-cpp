@@ -71,7 +71,7 @@ inline PolicyKind policy_kind_from_string(const std::string& kind) {
 
 template <typename T>
 struct PolicyConfig {
-    static constexpr std::size_t MAX_POLICY_PARAMS = 1024;
+    static constexpr std::size_t MAX_POLICY_PARAMS = 64;
 
     PolicyKind kind{PolicyKind::None};
     T fee{T(0)};

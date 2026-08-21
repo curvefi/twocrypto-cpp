@@ -275,8 +275,13 @@ void test_quote_cache_safety_matrix() {
 #endif
     );
     require(
+#if defined(TWOCRYPTO_POLICY_HEADER)
         !compiled.uses_native_fee_model(),
-        "compiled policy must not use native fee model"
+        "selected compiled policy must not use native fee model"
+#else
+        compiled.uses_native_fee_model(),
+        "default compiled passthrough must use native fee model"
+#endif
     );
     require(
         !make_pool(fx::PolicyKind::ZeroStub).quote_cache_safe(),

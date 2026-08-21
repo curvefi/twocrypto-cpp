@@ -48,6 +48,13 @@ set(TWOCRYPTO_POOL_POLICY_SHA256 "" CACHE STRING
     "Optional expected SHA-256 digest for TWOCRYPTO_POOL_POLICY_PATH")
 set(POOL_POLICY_ABS "")
 set(POOL_POLICY_DIGEST "")
+set(TWOCRYPTO_POOL_PASSTHROUGH_POLICY_PATH
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/pools/twocrypto_fx/policies/compiled_passthrough.hpp")
+file(SHA256
+    "${TWOCRYPTO_POOL_PASSTHROUGH_POLICY_PATH}"
+    TWOCRYPTO_POOL_PASSTHROUGH_POLICY_SHA256)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    "${TWOCRYPTO_POOL_PASSTHROUGH_POLICY_PATH}")
 if(TWOCRYPTO_POOL_POLICY_PATH)
     get_filename_component(
         POOL_POLICY_ABS
@@ -79,6 +86,7 @@ endif()
 
 set(TWOCRYPTO_POOL_REVISION_OVERRIDE "" CACHE STRING
     "Attested pool source revision for archive builds")
+set(TWOCRYPTO_POOL_GIT_DIRTY "unknown")
 if(TWOCRYPTO_POOL_REVISION_OVERRIDE)
     set(TWOCRYPTO_POOL_GIT_REVISION "${TWOCRYPTO_POOL_REVISION_OVERRIDE}")
 else()
@@ -86,10 +94,27 @@ else()
         COMMAND git -C "${CMAKE_CURRENT_SOURCE_DIR}" rev-parse HEAD
         OUTPUT_VARIABLE TWOCRYPTO_POOL_GIT_REVISION
         OUTPUT_STRIP_TRAILING_WHITESPACE
+        RESULT_VARIABLE TWOCRYPTO_POOL_GIT_RESULT
         ERROR_QUIET
     )
     if(NOT TWOCRYPTO_POOL_GIT_REVISION)
         set(TWOCRYPTO_POOL_GIT_REVISION "unknown")
+    endif()
+    if(TWOCRYPTO_POOL_GIT_RESULT EQUAL 0)
+        execute_process(
+            COMMAND git -C "${CMAKE_CURRENT_SOURCE_DIR}" status --porcelain
+            OUTPUT_VARIABLE TWOCRYPTO_POOL_STATUS
+            RESULT_VARIABLE TWOCRYPTO_POOL_STATUS_RESULT
+            ERROR_QUIET
+        )
+        if(TWOCRYPTO_POOL_STATUS_RESULT EQUAL 0)
+            string(STRIP "${TWOCRYPTO_POOL_STATUS}" TWOCRYPTO_POOL_STATUS)
+            if(TWOCRYPTO_POOL_STATUS)
+                set(TWOCRYPTO_POOL_GIT_DIRTY "true")
+            else()
+                set(TWOCRYPTO_POOL_GIT_DIRTY "false")
+            endif()
+        endif()
     endif()
 endif()
 if(CMAKE_BUILD_TYPE)
@@ -155,6 +180,14 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_pool_snapshot.cpp")
     add_test(NAME test_pool_snapshot COMMAND test_pool_snapshot)
 endif()
 
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_numeric_policy.cpp")
+    enable_testing()
+    add_executable(test_numeric_policy tests/test_numeric_policy.cpp)
+    target_link_libraries(test_numeric_policy PRIVATE twocrypto::pool)
+    pool_private_defaults(test_numeric_policy)
+    add_test(NAME test_numeric_policy COMMAND test_numeric_policy)
+endif()
+
 endif()
 
 install(DIRECTORY include/pools/twocrypto_fx/
@@ -173,7 +206,11 @@ set(_twocrypto_pool_config_in
 file(WRITE "${_twocrypto_pool_config_in}" [=[
 @PACKAGE_INIT@
 include(CMakeFindDependencyMacro)
-find_dependency(Boost 1.79 CONFIG)
+find_dependency(Boost 1.79)
+set(twocrypto_pool_GIT_REVISION "@TWOCRYPTO_POOL_GIT_REVISION@")
+set(twocrypto_pool_GIT_DIRTY "@TWOCRYPTO_POOL_GIT_DIRTY@")
+set(twocrypto_pool_PASSTHROUGH_POLICY_SHA256
+    "@TWOCRYPTO_POOL_PASSTHROUGH_POLICY_SHA256@")
 include("${CMAKE_CURRENT_LIST_DIR}/twocrypto_poolTargets.cmake")
 check_required_components(twocrypto_pool)
 ]=])

@@ -74,10 +74,9 @@ struct NativeFeePolicy {
                     ema_input * (config.precision - alpha) + price_oracle * alpha
                 ) / config.precision;
             } else {
-                auto alpha = std::exp(
-                    -static_cast<double>(dt) / static_cast<double>(config.ma_time)
-                );
-                price_oracle = ema_input * (T(1) - T(alpha)) + price_oracle * T(alpha);
+                using std::exp;
+                const T alpha = exp(-dt / config.ma_time);
+                price_oracle = ema_input * (T(1) - alpha) + price_oracle * alpha;
             }
         }
         return price_oracle;

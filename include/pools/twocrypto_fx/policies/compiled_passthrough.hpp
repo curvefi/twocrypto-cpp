@@ -9,6 +9,7 @@
 #include <array>
 
 #include "common.hpp"
+#include "../policy_descriptor.hpp"
 
 namespace arb {
 namespace pools {
@@ -16,9 +17,12 @@ namespace twocrypto_fx {
 
 template <typename T>
 struct ChallengeFeePolicy {
-    static constexpr std::size_t PARAM_COUNT = 0;
-
-    static constexpr const char* NAME = "native_passthrough";
+    inline static constexpr PolicyDescriptor<0> DESCRIPTOR{
+        "native_passthrough",
+        {},
+    };
+    static constexpr std::size_t PARAM_COUNT = DESCRIPTOR.size();
+    static constexpr const char* NAME = DESCRIPTOR.name.data(); // legacy ABI
 
     // Value-semantic per-pool state; copied by pool transaction snapshots.
     struct State {};

@@ -756,13 +756,11 @@ public:
                 projected * alpha
             ) / PoolTraits<T>::PRECISION();
         } else {
+            using std::exp;
             const T alpha =
                 cached_ema_alpha_valid && cached_ema_dt == dt_raw
                     ? cached_ema_alpha
-                    : T(std::exp(
-                        -static_cast<double>(dt) /
-                        static_cast<double>(ma_time)
-                    ));
+                    : exp(-dt / ma_time);
             projected = capped * (T(1) - alpha) + projected * alpha;
         }
         return projected;
@@ -1672,9 +1670,8 @@ public:
                 if (cached_ema_alpha_valid && cached_ema_dt == dt_raw) {
                     alpha = cached_ema_alpha;
                 } else {
-                    alpha = T(std::exp(
-                        - static_cast<double>(dt) / static_cast<double>(ma_time)
-                    ));
+                    using std::exp;
+                    alpha = exp(-dt / ma_time);
                     cached_ema_dt = dt_raw;
                     cached_ema_alpha = alpha;
                     cached_ema_alpha_valid = true;

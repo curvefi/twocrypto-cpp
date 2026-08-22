@@ -41,14 +41,11 @@ option(TWOCRYPTO_POOL_BUILD_TESTS
     "Build pool-local tests when this is the top-level project"
     ${_twocrypto_pool_build_tests_default})
 
-# Private parity only: the installed pool target never selects or attests a
+# Private parity only: the installed pool target never selects a
 # concrete policy. The header is compiled into parity executables below.
 set(TWOCRYPTO_PARITY_POLICY_PATH "" CACHE FILEPATH
     "Private parity policy header for pool test executables")
-set(TWOCRYPTO_PARITY_POLICY_SHA256 "" CACHE STRING
-    "Optional SHA-256 for TWOCRYPTO_PARITY_POLICY_PATH")
 set(_twocrypto_parity_policy_abs "")
-set(_twocrypto_parity_policy_digest "")
 if(TWOCRYPTO_PARITY_POLICY_PATH)
     if(NOT TWOCRYPTO_POOL_BUILD_BENCHMARKS AND NOT TWOCRYPTO_POOL_BUILD_TESTS)
         message(FATAL_ERROR
@@ -63,22 +60,6 @@ if(TWOCRYPTO_PARITY_POLICY_PATH)
             "TWOCRYPTO_PARITY_POLICY_PATH is not a regular file: "
             "${_twocrypto_parity_policy_abs}")
     endif()
-    file(SHA256 "${_twocrypto_parity_policy_abs}"
-        _twocrypto_parity_policy_digest)
-    string(TOLOWER "${_twocrypto_parity_policy_digest}"
-        _twocrypto_parity_policy_digest)
-    if(TWOCRYPTO_PARITY_POLICY_SHA256)
-        string(TOLOWER "${TWOCRYPTO_PARITY_POLICY_SHA256}"
-            _twocrypto_parity_policy_expected)
-        if(NOT "${_twocrypto_parity_policy_expected}" STREQUAL
-           "${_twocrypto_parity_policy_digest}")
-            message(FATAL_ERROR
-                "TWOCRYPTO_PARITY_POLICY_SHA256 does not match policy bytes")
-        endif()
-    endif()
-elseif(TWOCRYPTO_PARITY_POLICY_SHA256)
-    message(FATAL_ERROR
-        "TWOCRYPTO_PARITY_POLICY_SHA256 requires TWOCRYPTO_PARITY_POLICY_PATH")
 endif()
 
 function(pool_private_defaults TARGET_NAME)
@@ -89,8 +70,7 @@ function(pool_private_parity_policy TARGET_NAME)
     if(_twocrypto_parity_policy_abs)
         target_compile_definitions(${TARGET_NAME} PRIVATE
             TWOCRYPTO_POLICY_HEADER="${_twocrypto_parity_policy_abs}"
-            TWOCRYPTO_POOL_POLICY_PATH="${_twocrypto_parity_policy_abs}"
-            TWOCRYPTO_POOL_POLICY_SHA256="${_twocrypto_parity_policy_digest}")
+            TWOCRYPTO_POOL_POLICY_PATH="${_twocrypto_parity_policy_abs}")
     endif()
 endfunction()
 

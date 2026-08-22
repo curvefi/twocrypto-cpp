@@ -20,9 +20,6 @@
 #ifndef TWOCRYPTO_POOL_POLICY_PATH
 #define TWOCRYPTO_POOL_POLICY_PATH ""
 #endif
-#ifndef TWOCRYPTO_POOL_POLICY_SHA256
-#define TWOCRYPTO_POOL_POLICY_SHA256 ""
-#endif
 
 namespace arb::parity {
 
@@ -46,7 +43,6 @@ inline bool handle_build_identity_arg(int argc, char* argv[]) {
         identity["build_mode"] = TWOCRYPTO_POOL_BUILD_MODE;
         identity["compiler"] = TWOCRYPTO_POOL_COMPILER;
         identity["policy_path"] = TWOCRYPTO_POOL_POLICY_PATH;
-        identity["policy_sha256"] = TWOCRYPTO_POOL_POLICY_SHA256;
         std::cout << boost::json::serialize(identity) << '\n';
         return true;
     }

@@ -59,9 +59,8 @@ protection, rollback, and actuator authority. Without a selected header,
 `pools/twocrypto_fx/policies/compiled_passthrough.hpp` delegates to native
 surfaces. Concrete policy selection is intentionally owned by that executable,
 not by the installed pool package. The pool checkout exposes
-`TWOCRYPTO_PARITY_POLICY_PATH` (and optional
-`TWOCRYPTO_PARITY_POLICY_SHA256`) only for private parity test/benchmark
-targets; those values are never exported with `twocrypto::pool`.
+`TWOCRYPTO_PARITY_POLICY_PATH` only for private parity test/benchmark targets;
+that value is never exported with `twocrypto::pool`.
 
 The checked-in `include/pools/twocrypto_fx/policies/yieldbasis.hpp` is the exact
 `uint256` translation of the pinned `YBTwocryptoPolicy.vy`. Build the private
@@ -112,7 +111,7 @@ The Vyper authority is the `reference/twocrypto-ng` Git submodule. Its tracked
 gitlink commit is the revision record; `.gitmodules` records the upstream URL
 and `invariant-change` branch. Private parity reports may retain the pool
 revision, submodule revision, compiler/build mode, harness identity,
-selected-policy digest, and explicit input paths. These details are not part of
+selected-policy ID, and explicit input paths. These details are not part of
 the installed pool package; the pool CMake does not inspect Git or policy
 headers.
 

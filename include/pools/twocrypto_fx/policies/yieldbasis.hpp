@@ -10,14 +10,26 @@
 #include <type_traits>
 
 #include "pools/twocrypto_fx/policies/common.hpp"
+#include "pools/twocrypto_fx/policy_descriptor.hpp"
 #include "pools/twocrypto_fx/stableswap_math.hpp"
 
 namespace arb::pools::twocrypto_fx {
 
 template <typename T>
 struct ChallengeFeePolicy {
-    static constexpr std::size_t PARAM_COUNT = 6;
-    static constexpr const char* NAME = "yieldbasis_twocrypto_policy";
+    inline static constexpr PolicyDescriptor<6> DESCRIPTOR{
+        "yieldbasis_twocrypto_policy",
+        {{
+            {"fast_half_life_s", 0, "seconds", 7500.0L, 600.0L, 604800.0L, 60.0L},
+            {"slow_half_life_s", 1, "seconds", 54000.0L, 600.0L, 604800.0L, 600.0L},
+            {"kappa", 2, "dimensionless", 1.27L, 0.0L, 2.0L, 0.01L},
+            {"deadband", 3, "relative", 0.00028L, 0.0L, 0.006L, 0.00001L},
+            {"min_cap", 4, "relative", 0.0012L, 0.0001L, 0.006L, 0.0001L},
+            {"max_cap", 5, "relative", 0.0048L, 0.0001L, 0.006L, 0.0001L},
+        }},
+    };
+    static constexpr std::size_t PARAM_COUNT = DESCRIPTOR.size();
+    static constexpr const char* NAME = DESCRIPTOR.name.data();
     static constexpr uint64_t CAP_RAMP_SECONDS = 3600;
 
     struct State {
@@ -75,6 +87,11 @@ struct ChallengeFeePolicy {
         const uint64_t fast = fast_half_life(params);
         const uint64_t slow = slow_half_life(params);
         const T one = precision();
+        T relative_cap = T(60) * one / T(10000);
+        if constexpr (!std::is_same_v<T, uint256>) {
+            // Protocol v1 widens binary64 candidates, including the 60 bps boundary.
+            relative_cap = T(0.006);
+        }
         if (fast < 600 || fast > 604800) {
             throw std::invalid_argument("fast half-life");
         }
@@ -84,13 +101,13 @@ struct ChallengeFeePolicy {
         if (fast > slow) {
             throw std::invalid_argument("half-life order");
         }
-        if (kappa(params) > T(2) * one) {
+        if (kappa(params) < T(0) || kappa(params) > T(2) * one) {
             throw std::invalid_argument("kappa");
         }
-        if (deadband(params) > T(60) * one / T(10000)) {
+        if (deadband(params) < T(0) || deadband(params) > relative_cap) {
             throw std::invalid_argument("deadband");
         }
-        if (max_cap(params) > T(60) * one / T(10000)) {
+        if (max_cap(params) > relative_cap) {
             throw std::invalid_argument("max cap");
         }
         if (min_cap(params) < one / T(10000) ||

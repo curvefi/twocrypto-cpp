@@ -4,6 +4,12 @@ Standalone C++17 TwoCrypto pool checkout, exact-integer adapter, and pinned Vype
 
 The checkout provides the header-only CMake target `twocrypto::pool` (alias `twocrypto_pool`). The `twocrypto_parity` environment and exact harness are private validation utilities used by the sibling checkouts.
 
+## Repository split
+
+- [`twocrypto-cpp`](https://github.com/curvefi/twocrypto-cpp) — C++ Twocrypto pool implementation and Vyper parity; no market simulation or experiment orchestration.
+- [`fx-arb-harness`](https://github.com/curvefi/fx-arb-harness) — C++ arbitrage simulation and evaluator protocol; owns market-event execution and raw metrics.
+- [`fx-optimization`](https://github.com/curvefi/fx-optimization) — cluster orchestration, parameter grids, scoring, result storage, robustness analysis, heatmaps, and replay.
+
 ## Checkout-local setup
 
 Requirements: Python 3.12, [uv](https://docs.astral.sh/uv/), CMake 3.14+, a C++17 compiler, and Boost 1.79+ headers. Run Python and CMake setup independently; Python is only needed for parity utilities.

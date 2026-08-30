@@ -23,6 +23,7 @@ struct ChallengeFeePolicy {
     };
     static constexpr std::size_t PARAM_COUNT = DESCRIPTOR.size();
     static constexpr const char* NAME = DESCRIPTOR.name.data(); // legacy ABI
+    static constexpr bool USES_NATIVE_FEE = true;
 
     // Value-semantic per-pool state; copied by pool transaction snapshots.
     struct State {};

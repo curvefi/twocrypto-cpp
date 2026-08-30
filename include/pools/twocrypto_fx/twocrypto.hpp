@@ -374,10 +374,6 @@ private:
 
 public:
 
-    bool quote_cache_safe() const {
-        return policy.quote_cache_safe();
-    }
-
     const PolicyHookMetrics<T>& hook_metrics() const noexcept {
         return policy_hook_metrics;
     }
@@ -385,7 +381,7 @@ public:
     bool uses_native_fee_model() const noexcept {
         return policy.kind == PolicyKind::None ||
             (policy.kind == PolicyKind::Compiled &&
-             compiled_detail::quote_cache_safe);
+             compiled_detail::uses_native_fee_v<T>);
     }
 
 

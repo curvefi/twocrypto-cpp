@@ -288,20 +288,6 @@ public:
         research = snapshot.research;
     }
 
-    // Quote results are cacheable only for native no-policy pools and for the
-    // compiled passthrough selected when no repository policy header is built.
-    bool quote_cache_safe() const {
-        switch (kind) {
-        case PolicyKind::None:
-            return true;
-        case PolicyKind::Compiled:
-            return compiled_detail::quote_cache_safe;
-        default:
-            return false;
-        }
-    }
-
-
     void configure_pool(
         const T& mid_fee,
         const T& out_fee,

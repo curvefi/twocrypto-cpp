@@ -50,10 +50,10 @@ using Pool = tc::TwoCryptoPool<tc::uint256>;
 Pool::MutableSnapshot before = pool.mutable_snapshot();
 // speculative transaction
 pool.restore_mutable(before);
-bool cacheable = pool.quote_cache_safe();
+bool native_fee = pool.uses_native_fee_model();
 ```
 
-`MutableSnapshot` covers mutable pool, policy, research, and hook-metric fields changed by a transaction while excluding immutable configuration. It is allocation-free. `quote_cache_safe()` is true for the native `None` policy and macro-absent compiled passthrough; selected compiled policies deny caching by default.
+`MutableSnapshot` covers mutable pool, policy, research, and hook-metric fields changed by a transaction while excluding immutable configuration. It is allocation-free. `uses_native_fee_model()` is true for native pools and for compiled policies that explicitly declare zero-return native-fee fallback.
 
 ## Private compiled-policy extension
 

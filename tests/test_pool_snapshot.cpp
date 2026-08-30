@@ -256,49 +256,25 @@ void test_unsupported_policy_snapshot_kind_rejects() {
     require(threw, "unsupported policy kind silently fell through snapshot");
 }
 
-void test_quote_cache_safety_matrix() {
+void test_native_fee_model_matrix() {
     Pool none = make_pool(fx::PolicyKind::None);
     Pool compiled = make_pool(fx::PolicyKind::Compiled);
-    require(none.quote_cache_safe(), "none policy must be cache-safe");
     require(none.uses_native_fee_model(), "none policy must use native fee model");
     require(
         &none.hook_metrics() == &none.policy_hook_metrics,
         "hook metrics accessor must expose pool-owned metrics"
     );
     require(
-#if defined(TWOCRYPTO_POLICY_HEADER)
-        !compiled.quote_cache_safe(),
-        "selected compiled policy must not be cache-safe"
-#else
-        compiled.quote_cache_safe(),
-        "default compiled passthrough must be cache-safe"
-#endif
+        compiled.uses_native_fee_model() ==
+            fx::compiled_detail::uses_native_fee_v<double>,
+        "compiled policy native-fee capability was not propagated"
     );
-    require(
-#if defined(TWOCRYPTO_POLICY_HEADER)
-        !compiled.uses_native_fee_model(),
-        "selected compiled policy must not use native fee model"
-#else
-        compiled.uses_native_fee_model(),
-        "default compiled passthrough must use native fee model"
-#endif
-    );
-    require(
-        !make_pool(fx::PolicyKind::ZeroStub).quote_cache_safe(),
-        "zero stub must not be cache-safe"
-    );
-    require(
-        !make_pool(fx::PolicyKind::TwocryptoPolicy).quote_cache_safe(),
-        "native policy must not be cache-safe"
-    );
-    require(
-        !make_pool(fx::PolicyKind::OracleX2SequentialFee).quote_cache_safe(),
-        "sequential policy must not be cache-safe"
-    );
-    require(
-        !make_pool(fx::PolicyKind::FixedFee).quote_cache_safe(),
-        "fixed policy must not be cache-safe"
-    );
+    require(!make_pool(fx::PolicyKind::TwocryptoPolicy).uses_native_fee_model(),
+            "native policy unexpectedly declared native fee fallback");
+    require(!make_pool(fx::PolicyKind::OracleX2SequentialFee).uses_native_fee_model(),
+            "sequential policy unexpectedly declared native fee fallback");
+    require(!make_pool(fx::PolicyKind::FixedFee).uses_native_fee_model(),
+            "fixed policy unexpectedly declared native fee fallback");
 }
 
 void test_failed_add_is_atomic() {
@@ -356,7 +332,7 @@ int main() {
     test_active_policy_snapshot_variants();
     test_inactive_policy_state_is_not_snapshotted();
     test_unsupported_policy_snapshot_kind_rejects();
-    test_quote_cache_safety_matrix();
+    test_native_fee_model_matrix();
     test_failed_add_is_atomic();
     test_fixed_out_cannot_burn_pool_owned_lp();
     return 0;

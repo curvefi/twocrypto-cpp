@@ -30,7 +30,17 @@ struct ChallengeFeePolicy {
     };
     static constexpr std::size_t PARAM_COUNT = DESCRIPTOR.size();
     static constexpr const char* NAME = DESCRIPTOR.name.data();
+    static constexpr bool USES_NATIVE_FEE = true;
     static constexpr uint64_t CAP_RAMP_SECONDS = 3600;
+
+    struct EmaAlphaCache {
+        bool valid{false};
+        uint64_t dt{0};
+        uint64_t fast_half_life{0};
+        uint64_t slow_half_life{0};
+        T fast_alpha{0};
+        T slow_alpha{0};
+    };
 
     struct State {
         uint64_t last_update_ts{0};
@@ -38,6 +48,8 @@ struct ChallengeFeePolicy {
         T fast_ema{0};
         T slow_ema{0};
         T price_scale{0};
+        // Non-semantic memoization: policy state JSON and onchain parity omit it.
+        mutable EmaAlphaCache alpha_cache{};
     };
 
     static T precision() {
@@ -122,9 +134,9 @@ struct ChallengeFeePolicy {
                 uint256(dt) * uint256("693147180559945309") / uint256(half_life);
             return MathOps<uint256>::wad_exp(-int256(exponent_magnitude));
         } else {
-            constexpr long double LN2 = 0.693147180559945309L;
-            return T(std::exp(-LN2 * static_cast<long double>(dt) /
-                              static_cast<long double>(half_life)));
+            const T exponent = -T(0.693147180559945309L) * T(dt) / T(half_life);
+            using std::exp;
+            return exp(exponent);
         }
     }
 
@@ -136,16 +148,13 @@ struct ChallengeFeePolicy {
         return observation;
     }
 
-    static T ema(
+    static T ema_with_alpha(
         T old_value,
         T observation,
         T price_scale,
-        uint64_t dt,
-        uint64_t half_life
+        T alpha
     ) {
-        if (dt == 0) return old_value;
         const T price = clamp_observation(observation, price_scale);
-        const T alpha = ema_alpha(dt, half_life);
         if constexpr (std::is_same_v<T, uint256>) {
             const T one = precision();
             return (price * (one - alpha) + old_value * alpha) / one;
@@ -164,20 +173,34 @@ struct ChallengeFeePolicy {
             throw std::underflow_error("policy timestamp");
         }
         const uint64_t dt = now - state.last_update_ts;
+        if (dt == 0) return {state.fast_ema, state.slow_ema};
+
+        const uint64_t fast = fast_half_life(params);
+        const uint64_t slow = slow_half_life(params);
+        auto& cache = state.alpha_cache;
+        if (
+            !cache.valid || cache.dt != dt ||
+            cache.fast_half_life != fast || cache.slow_half_life != slow
+        ) {
+            cache.valid = true;
+            cache.dt = dt;
+            cache.fast_half_life = fast;
+            cache.slow_half_life = slow;
+            cache.fast_alpha = ema_alpha(dt, fast);
+            cache.slow_alpha = ema_alpha(dt, slow);
+        }
         return {
-            ema(
+            ema_with_alpha(
                 state.fast_ema,
                 state.last_prices,
                 state.price_scale,
-                dt,
-                fast_half_life(params)
+                cache.fast_alpha
             ),
-            ema(
+            ema_with_alpha(
                 state.slow_ema,
                 state.last_prices,
                 state.price_scale,
-                dt,
-                slow_half_life(params)
+                cache.slow_alpha
             ),
         };
     }

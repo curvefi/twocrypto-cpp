@@ -168,14 +168,9 @@ def _assert_state_equal(
             assert boa[field] == prev_boa[field]
 
 
-def test_boa_cpp_uint256_parity_for_fxswap_ext_fee_policy_modes(tmp_path: Path) -> None:
+def test_boa_cpp_uint256_parity_for_native_pool(tmp_path: Path) -> None:
     _require_cpp_harness()
-    pool_configs = [
-        _pool("policy_none", "none"),
-        _pool("policy_twocrypto", "twocrypto_policy"),
-        _pool("policy_zero_stub", "zero_stub"),
-        _pool("policy_oracle_x2", "oracle_x2"),
-    ]
+    pool_configs = [_pool("policy_none", "none")]
     sequence = _sequence()
     pools_path, sequences_path, cpp_output, boa_output = (
         tmp_path / name for name in ("pools.json", "sequences.json", "cpp.json", "boa.json")

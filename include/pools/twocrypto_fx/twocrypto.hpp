@@ -61,141 +61,8 @@ struct PoolTraits<uint256> {
 };
 
 template <typename T>
-struct PolicyHookMetrics {
-    uint64_t target_outer_eval_count{0};
-    uint64_t target_outer_ready_count{0};
-    uint64_t target_outer_blocked_profit_count{0};
-    uint64_t target_outer_blocked_same_block_count{0};
-    uint64_t target_eval_count{0};
-    uint64_t target_policy_nonzero_count{0};
-    uint64_t target_step_move_count{0};
-    uint64_t target_step_min_veto_count{0};
-    uint64_t target_step_noop_count{0};
-    uint64_t target_lp_veto_count{0};
-    uint64_t target_lp_veto_below_precision_count{0};
-    uint64_t target_lp_veto_below_lp_xcp_profit_count{0};
-    uint64_t target_lp_veto_burn_cap_exhausted_count{0};
-    uint64_t target_donation_burn_used_count{0};
-    uint64_t target_donation_burn_cap_exhausted_count{0};
-    uint64_t target_commit_count{0};
-
-    void record_target_outer_gate(bool profit_ready, bool block_ready) {
-        target_outer_eval_count += 1;
-        if (profit_ready && block_ready) {
-            target_outer_ready_count += 1;
-            return;
-        }
-        if (!profit_ready) {
-            target_outer_blocked_profit_count += 1;
-        }
-        if (!block_ready) {
-            target_outer_blocked_same_block_count += 1;
-        }
-    }
-
-    void record_target_eval() {
-        target_eval_count += 1;
-    }
-
-    void record_target_nonzero() {
-        target_policy_nonzero_count += 1;
-    }
-
-    void record_target_step() {
-        target_step_move_count += 1;
-    }
-
-    void record_target_donation_burn(
-        const T& burn,
-        const T& needed,
-        const T& available
-    ) {
-        if (burn > T(0)) {
-            target_donation_burn_used_count += 1;
-        }
-        if (needed > available) {
-            target_donation_burn_cap_exhausted_count += 1;
-        }
-    }
-
-    void record_target_lp_veto(
-        const T& new_virtual_price,
-        const T& lp_xcp_profit,
-        const T& precision,
-        bool burn_cap_exhausted
-    ) {
-        target_lp_veto_count += 1;
-        if (new_virtual_price <= precision) {
-            target_lp_veto_below_precision_count += 1;
-        }
-        if (new_virtual_price < lp_xcp_profit) {
-            target_lp_veto_below_lp_xcp_profit_count += 1;
-        }
-        if (burn_cap_exhausted) {
-            target_lp_veto_burn_cap_exhausted_count += 1;
-        }
-    }
-
-    void record_target_commit() {
-        target_commit_count += 1;
-    }
-};
-
-template <typename T>
 class TwoCryptoPool {
 public:
-    struct KeeperGapProbe {
-        bool policy_owned{false};
-        T threshold_bps{T(0)};
-        bool heartbeat_due{false};
-        bool gap_fired{false};
-        bool heartbeat_fired{false};
-        bool fired{false};
-        // Caller-owned transaction outcome survives the value-semantic
-        // rollback applied to a rejected keeper poke.
-        bool prospective_lp_evaluated{false};
-        bool lp_gate_passed{false};
-        bool lp_below_precision{false};
-        bool lp_below_floor{false};
-        bool donation_burn_cap_exhausted{false};
-    };
-
-    struct PolicyKeeperPreflight {
-        PolicyKeeperDecision<T> decision{};
-        bool clock_ready{false};
-        bool trigger_evaluated{false};
-        bool block_ready{false};
-        bool outer_profit_ready{false};
-        bool ready{false};
-    };
-
-    struct DeferredPolicyUpdate {
-        bool ready{false};
-        std::array<T, 2> xp{};
-        T price_scale{};
-        T price_oracle{};
-        T last_prices{};
-        T virtual_price{};
-        T xcp_profit{};
-        T d_value{};
-        uint64_t oracle_timestamp{0};
-    };
-
-    static bool keeper_gap_crossed(
-        const T& raw_target,
-        const T& price_scale,
-        const T& threshold_bps
-    ) {
-        if (!(raw_target > T(0)) || !(price_scale > T(0))) {
-            return false;
-        }
-        const T raw_delta = raw_target >= price_scale
-            ? raw_target - price_scale
-            : price_scale - raw_target;
-        const T gap_bps = raw_delta * T(10000) / price_scale;
-        return gap_bps >= threshold_bps;
-    }
-
     using Ops = MathOps<T>;
     using Traits = PoolTraits<T>;
     static constexpr int N_COINS = 2;
@@ -228,7 +95,6 @@ public:
     T reserved_profit_fraction = Traits::FEE_PRECISION() / 2;
     T admin_fee = Traits::FEE_PRECISION() / 2;
     PolicyModel<T> policy{};
-    PolicyHookMetrics<T> policy_hook_metrics{};
 
     // Profit tracking
     T xcp_profit = Traits::PRECISION();
@@ -283,7 +149,6 @@ public:
         T donation_protection_extension_remainder{};
 
         typename PolicyModel<T>::MutableSnapshot policy{};
-        PolicyHookMetrics<T> policy_hook_metrics{};
     };
 
     MutableSnapshot mutable_snapshot() const {
@@ -310,7 +175,6 @@ public:
         snapshot.donation_protection_extension_remainder =
             donation_protection_extension_remainder;
         snapshot.policy = policy.mutable_snapshot();
-        snapshot.policy_hook_metrics = policy_hook_metrics;
         return snapshot;
     }
 
@@ -337,7 +201,6 @@ public:
         donation_protection_extension_remainder =
             snapshot.donation_protection_extension_remainder;
         policy.restore_mutable(snapshot.policy);
-        policy_hook_metrics = snapshot.policy_hook_metrics;
     }
 
 private:
@@ -373,11 +236,6 @@ private:
     }
 
 public:
-
-    const PolicyHookMetrics<T>& hook_metrics() const noexcept {
-        return policy_hook_metrics;
-    }
-
     bool uses_native_fee_model() const noexcept {
         return policy.kind == PolicyKind::None ||
             (policy.kind == PolicyKind::Compiled &&
@@ -533,24 +391,9 @@ private:
         const T& last_prices,
         const T& virtual_price,
         const T& xcp_profit,
-        const T& D,
-        DeferredPolicyUpdate* deferred = nullptr
+        const T& D
     ) {
         if (policy.kind == PolicyKind::None) {
-            return;
-        }
-        if (deferred != nullptr) {
-            *deferred = {
-                true,
-                xp,
-                price_scale,
-                price_oracle,
-                last_prices,
-                virtual_price,
-                xcp_profit,
-                D,
-                last_timestamp,
-            };
             return;
         }
         policy.update_state(
@@ -707,28 +550,9 @@ public:
         cached_price_scale = tweak_price(A_gamma, xp, D, virtual_price);
     }
 
-    KeeperGapProbe tick_keeper_gap(T threshold_bps, bool heartbeat_due) {
-        KeeperGapProbe probe{};
-        probe.threshold_bps = threshold_bps;
-        probe.heartbeat_due = heartbeat_due;
-        auto A_gamma = std::array<T, 2>{ A, gamma };
-        const auto xp = _xp(balances, cached_price_scale);
-        cached_price_scale = tweak_price(A_gamma, xp, D, virtual_price, &probe);
-        return probe;
-    }
-
-    KeeperGapProbe tick_policy_keeper() {
-        KeeperGapProbe probe{};
-        probe.policy_owned = true;
-        auto A_gamma = std::array<T, 2>{ A, gamma };
-        const auto xp = _xp(balances, cached_price_scale);
-        cached_price_scale = tweak_price(A_gamma, xp, D, virtual_price, &probe);
-        return probe;
-    }
-
     // Native contract-side oracle projected to `now` without mutating its
-    // timestamp/cache. The policy uses this as its fast EMA during keeper
-    // preflight; tweak_price performs the same projection on a real call.
+    // timestamp/cache. lp_price_at uses this read-only projection; tweak_price
+    // performs the same EMA update on a real call, including the fixed tick.
     T projected_price_oracle_at(uint64_t now) const {
         T projected = cached_price_oracle;
         if (last_timestamp >= now) return projected;
@@ -764,173 +588,6 @@ public:
         return projected;
     }
 
-    // Exact observational preflight for an ordinary idle tick at the current
-    // block_timestamp. It mirrors the price-scale commit gates without
-    // touching pool, policy, EMA, hook-metric, cache, or timestamp state.
-    bool can_tick_adjust_price_scale() const {
-        try {
-            const auto A_gamma = std::array<T, 2>{A, gamma};
-            const T price_scale = cached_price_scale;
-            const uint64_t last_ts = last_timestamp;
-            if (!(last_ts < block_timestamp)) return false;
-
-            const T price_oracle = projected_price_oracle_at(block_timestamp);
-            const auto xp = _xp(balances, price_scale);
-            const T projected_last_prices = (
-                MathOps<T>::get_p(xp, D, A_gamma) * price_scale
-            ) / PoolTraits<T>::PRECISION();
-            (void)projected_last_prices;
-
-            const T total_supply = totalSupply;
-            const T donation_unlocked = _donation_shares();
-            const T locked_supply = total_supply - donation_unlocked;
-            const T old_virtual_price = virtual_price;
-            const T xcp = _xcp(D, price_scale);
-            const T vp = total_supply > PoolTraits<T>::ZERO()
-                ? PoolTraits<T>::PRECISION() * xcp / total_supply
-                : PoolTraits<T>::PRECISION();
-
-            if (vp < virtual_price) {
-                throw std::runtime_error("virtual price decreased");
-            }
-            if constexpr (std::is_same_v<T, uint256>) {
-                if (vp < old_virtual_price) {
-                    throw std::runtime_error("virtual price decreased");
-                }
-            }
-
-            T projected_xcp_profit = xcp_profit;
-            T projected_lp_xcp_profit = lp_xcp_profit;
-            const T old_xcp_profit = projected_xcp_profit;
-            if (vp > old_virtual_price) {
-                projected_xcp_profit += vp - old_virtual_price;
-                if (projected_xcp_profit > Traits::PRECISION()) {
-                    const T baseline = Traits::max(
-                        old_xcp_profit,
-                        Traits::PRECISION()
-                    );
-                    const T d_profit = projected_xcp_profit > baseline
-                        ? projected_xcp_profit - baseline
-                        : Traits::ZERO();
-                    const T denom = (
-                        Traits::FEE_PRECISION() * Traits::FEE_PRECISION() -
-                        reserved_profit_fraction * admin_fee
-                    );
-                    if (d_profit > Traits::ZERO() && denom > Traits::ZERO()) {
-                        projected_lp_xcp_profit += (
-                            d_profit * reserved_profit_fraction *
-                            (Traits::FEE_PRECISION() - admin_fee)
-                        ) / denom;
-                    }
-                }
-            } else {
-                const T vp_delta = old_virtual_price - vp;
-                projected_xcp_profit = projected_xcp_profit > vp_delta
-                    ? projected_xcp_profit - vp_delta
-                    : Traits::ZERO();
-                if (
-                    projected_lp_xcp_profit > Traits::PRECISION() &&
-                    vp_delta <= projected_lp_xcp_profit - Traits::PRECISION()
-                ) {
-                    projected_lp_xcp_profit -= vp_delta;
-                } else {
-                    projected_lp_xcp_profit = Traits::PRECISION();
-                }
-            }
-
-            const T vp_boosted = locked_supply > PoolTraits<T>::ZERO()
-                ? PoolTraits<T>::PRECISION() * xcp / locked_supply
-                : vp;
-            if (vp_boosted < vp) {
-                throw std::runtime_error("negative donation");
-            }
-            if (!(vp_boosted > projected_lp_xcp_profit)) return false;
-
-            const T p_policy = policy.kind == PolicyKind::None
-                ? Traits::ZERO()
-                : policy.preview_price_scale_at(block_timestamp, price_oracle);
-            const auto actuator = preview_price_scale_actuator(
-                p_policy,
-                price_oracle,
-                price_scale,
-                PoolTraits<T>::PRECISION(),
-                adjustment_step_min,
-                adjustment_step_max
-            );
-            const T p_new = actuator.p_new;
-            if (p_new == price_scale) return false;
-
-            auto xp_new = xp;
-            xp_new[1] = xp[1] * p_new / price_scale;
-            const T new_D = MathOps<T>::newton_D(
-                A_gamma[0],
-                A_gamma[1],
-                xp_new,
-                D
-            );
-            const T new_xcp = _xcp(new_D, p_new);
-            T new_virtual_price = (
-                PoolTraits<T>::PRECISION() * new_xcp
-            ) / total_supply;
-
-            const T goal_vp = Traits::max(projected_lp_xcp_profit, vp);
-            if (new_virtual_price < goal_vp) {
-                const T tweaked_supply = (
-                    PoolTraits<T>::PRECISION() * new_xcp
-                ) / goal_vp;
-                if (!(tweaked_supply < total_supply)) {
-                    throw std::runtime_error("tweaked supply must shrink");
-                }
-                const T donation_shares_needed = total_supply - tweaked_supply;
-                const T donation_shares_to_burn = Traits::min(
-                    donation_shares_needed,
-                    donation_unlocked
-                );
-                new_virtual_price = (
-                    PoolTraits<T>::PRECISION() * new_xcp
-                ) / (total_supply - donation_shares_to_burn);
-            }
-
-            if (!(
-                new_virtual_price > PoolTraits<T>::PRECISION() &&
-                new_virtual_price >= projected_lp_xcp_profit
-            )) {
-                return false;
-            }
-            _assert_balance(xp_new);
-            return true;
-        } catch (...) {
-            return false;
-        }
-    }
-
-    // Cheap, view-shaped keeper preflight. The integer-only policy clock is
-    // checked before either EMA exponential. Survivors combine the contract's
-    // projected native fast EMA with the policy's projected slow EMA, then
-    // apply the pool's exact algebraic outer gates without mutation.
-    PolicyKeeperPreflight policy_keeper_preflight() const {
-        PolicyKeeperPreflight out{};
-        const auto clock = policy.keeper_clock_decision_at(block_timestamp);
-        out.clock_ready = clock.ready;
-        if (!clock.ready) {
-            out.decision = clock;
-            return out;
-        }
-        out.decision = policy.keeper_decision_at(
-            block_timestamp,
-            projected_price_oracle_at(block_timestamp)
-        );
-        out.trigger_evaluated = true;
-        if (!out.decision.ready) return out;
-
-        out.block_ready = last_timestamp < block_timestamp;
-        if (!out.block_ready) return out;
-
-        out.outer_profit_ready = get_vp_boosted() > lp_xcp_profit;
-        out.ready = out.outer_profit_ready;
-        return out;
-    }
-
     // add_liquidity: deposit into the pool; supports donation mode with cap semantics
     T add_liquidity(
         const std::array<T, 2>& amounts,
@@ -939,70 +596,12 @@ public:
         T* charged_lp_fee = nullptr
     ) {
         const auto minted = add_liquidity_impl(
-            amounts, min_mint_amount, donation, charged_lp_fee, nullptr,
-            nullptr
+            amounts, min_mint_amount, donation, charged_lp_fee, nullptr
         );
         // A null result is possible only for the explicit floating-point
         // try-add surface below. The public/Vyper-shaped method keeps its
         // historical throwing behavior for every rejection.
         return *minted;
-    }
-
-    // Search-only surface for a speculative add whose policy target was
-    // projected once from the identical pre-action state.  The add, native
-    // tweak gates, policy update, and every pool mutation remain unchanged;
-    // only the read-only get_price_scale projection is reused.
-    T add_liquidity_with_policy_target(
-        const std::array<T, 2>& amounts,
-        T min_mint_amount,
-        const T& policy_target,
-        DeferredPolicyUpdate* deferred_policy_update = nullptr
-    ) {
-        const auto minted = add_liquidity_impl(
-            amounts, min_mint_amount, false, nullptr, nullptr,
-            &policy_target, deferred_policy_update
-        );
-        return *minted;
-    }
-
-    // Floating search-only counterpart for the balanced VirtualPool P1 add.
-    // When both balances are scaled by the same factor, the two-coin
-    // invariant is homogeneous: D_new = D_old * scale.  Reuse that identity
-    // to skip the redundant first newton_D while retaining the ordinary LP
-    // fee, donation-protection, policy and tweak_price paths.  The selected
-    // route is always rechecked through add_liquidity_impl's full path before
-    // it can be committed.
-    T add_liquidity_proportional_search(
-        const std::array<T, 2>& amounts,
-        T min_mint_amount,
-        const T* policy_target_override = nullptr,
-        DeferredPolicyUpdate* deferred_policy_update = nullptr
-    ) {
-        static_assert(
-            std::is_floating_point_v<T>,
-            "proportional search add is floating-only"
-        );
-        const auto minted = add_liquidity_impl(
-            amounts, min_mint_amount, false, nullptr, nullptr,
-            policy_target_override, deferred_policy_update, true
-        );
-        return *minted;
-    }
-
-    // Complete the exact policy update captured by a speculative P1 add.
-    // Runtime/uint actions never use this surface.
-    void finish_deferred_policy_update(const DeferredPolicyUpdate& deferred) {
-        if (!deferred.ready || policy.kind == PolicyKind::None) return;
-        policy.update_state(
-            deferred.xp,
-            deferred.price_scale,
-            deferred.price_oracle,
-            deferred.last_prices,
-            deferred.virtual_price,
-            deferred.xcp_profit,
-            deferred.d_value,
-            deferred.oracle_timestamp
-        );
     }
 
     std::optional<T> try_add_donation(
@@ -1015,8 +614,7 @@ public:
             "throwless donation preview is floating-only"
         );
         return add_liquidity_impl(
-            amounts, min_mint_amount, true, nullptr, &rejection, nullptr,
-            nullptr
+            amounts, min_mint_amount, true, nullptr, &rejection
         );
     }
 
@@ -1026,25 +624,17 @@ private:
         T min_mint_amount,
         bool donation,
         T* charged_lp_fee,
-        std::string* rejection_out,
-        const T* policy_target_override,
-        DeferredPolicyUpdate* deferred_policy_update = nullptr,
-        bool proportional_search = false
+        std::string* rejection_out
     ) {
         const MutableSnapshot before = mutable_snapshot();
         T local_charged_lp_fee = Traits::ZERO();
-        DeferredPolicyUpdate local_deferred_policy_update{};
         try {
             auto result = add_liquidity_unchecked(
                 amounts,
                 min_mint_amount,
                 donation,
                 charged_lp_fee != nullptr ? &local_charged_lp_fee : nullptr,
-                rejection_out,
-                policy_target_override,
-                deferred_policy_update != nullptr
-                    ? &local_deferred_policy_update : nullptr,
-                proportional_search
+                rejection_out
             );
             if (!result.has_value()) {
                 restore_mutable(before);
@@ -1052,9 +642,6 @@ private:
             }
             if (charged_lp_fee != nullptr) {
                 *charged_lp_fee = local_charged_lp_fee;
-            }
-            if (deferred_policy_update != nullptr) {
-                *deferred_policy_update = local_deferred_policy_update;
             }
             return result;
         } catch (...) {
@@ -1068,10 +655,7 @@ private:
         T min_mint_amount,
         bool donation,
         T* charged_lp_fee,
-        std::string* rejection_out,
-        const T* policy_target_override,
-        DeferredPolicyUpdate* deferred_policy_update = nullptr,
-        bool proportional_search = false
+        std::string* rejection_out
     ) {
         if (amounts[0] + amounts[1] == Traits::ZERO()) {
             throw std::invalid_argument("no coins to add");
@@ -1101,27 +685,7 @@ private:
         auto A_gamma = std::array<T, 2>{ A, gamma };
 
         T old_D = D;
-        bool use_proportional_search = false;
-        T D_new{};
-        if constexpr (std::is_floating_point_v<T>) {
-            if (proportional_search && old_D > Traits::ZERO() &&
-                balances[0] > Traits::ZERO() && balances[1] > Traits::ZERO() &&
-                admin_fee == Traits::ZERO()) {
-                const T scale0 = new_balances[0] / balances[0];
-                const T scale1 = new_balances[1] / balances[1];
-                const T scale = (scale0 + scale1) / T(2);
-                const T scale_error = std::fabs(scale0 - scale1);
-                const T tolerance = T(64) * std::numeric_limits<T>::epsilon()
-                    * std::max({T(1), std::fabs(scale0), std::fabs(scale1)});
-                if (scale > T(0) && scale_error <= tolerance) {
-                    D_new = old_D * scale;
-                    use_proportional_search = true;
-                }
-            }
-        }
-        if (!use_proportional_search) {
-            D_new = Ops::newton_D(A_gamma[0], A_gamma[1], xp, old_D);
-        }
+        T D_new = Ops::newton_D(A_gamma[0], A_gamma[1], xp, old_D);
         T token_supply = totalSupply;
         T vp_preop = virtual_price;
         if (old_D > Traits::ZERO() && token_supply > Traits::ZERO()) {
@@ -1234,10 +798,7 @@ private:
                 totalSupply += d_token;
             }
 
-            cached_price_scale = tweak_price(
-                A_gamma, xp, D_new, vp_preop, nullptr,
-                policy_target_override, deferred_policy_update
-            );
+            cached_price_scale = tweak_price(A_gamma, xp, D_new, vp_preop);
         } else {
             D = D_new;
             virtual_price = Traits::PRECISION();
@@ -1396,8 +957,7 @@ public:
         T min_amount_j,
         T* charged_lp_fee = nullptr
     ) {
-        const MutableSnapshot before = mutable_snapshot();
-        try {
+        return with_mutable_rollback([&]() -> T {
             _claim_admin_fees();
             if (idx_i >= N_COINS) {
                 throw std::invalid_argument("coin index out of range");
@@ -1508,10 +1068,7 @@ public:
             balances = local_balances;
             if (charged_lp_fee != nullptr) *charged_lp_fee = d_token_fee;
             return dy;
-        } catch (...) {
-            restore_mutable(before);
-            throw;
-        }
+        });
     }
 
     // exchange: swap coin i for coin j
@@ -1634,10 +1191,7 @@ public:
         const std::array<T, 2>& _A_gamma,
         const std::array<T, 2>& xp,
         T _D,
-        T vp_preop,
-        KeeperGapProbe* keeper_probe = nullptr,
-        const T* policy_target_override = nullptr,
-        DeferredPolicyUpdate* deferred_policy_update = nullptr
+        T vp_preop
     ) {
         T price_oracle = cached_price_oracle;
         T price_scale  = cached_price_scale;
@@ -1751,90 +1305,12 @@ public:
             throw std::runtime_error("negative donation");
         }
 
-        // A scheduleless keeper observes the policy state that this nudge
-        // would create, but it must not advance the real policy merely to
-        // decide whether to submit.  Project on a value copy, expose the raw
-        // assembled target for the gap test, and retain the projected shaped
-        // target only for a fired transaction.  The real policy still receives
-        // exactly one ordinary update at the end of a committed pool tick.
-        T keeper_policy_target = Traits::ZERO();
-        bool have_keeper_policy_target = false;
-        if (keeper_probe != nullptr) {
-            if (policy.kind != PolicyKind::None) {
-                if (keeper_probe->policy_owned) {
-                    // The product policy's keeper view projects its pending
-                    // EMAs algebraically. Avoid copying PolicyModel here:
-                    // PolicyConfig contains a 64-element params array.
-                    const auto decision = policy.keeper_decision_at(
-                        block_timestamp,
-                        price_oracle
-                    );
-                    keeper_probe->gap_fired = decision.ready;
-                    keeper_probe->fired = decision.ready;
-                    if (decision.ready) {
-                        keeper_policy_target = decision.keeper_target;
-                        have_keeper_policy_target = true;
-                    }
-                } else {
-                    // Archived raw-gap modes preserve their historical
-                    // post-update projection and are not on the product path.
-                    PolicyModel<T> projected_policy = policy;
-                    projected_policy.prepare_price_scale_call(
-                        block_timestamp,
-                        price_oracle
-                    );
-                    projected_policy.update_state(
-                        xp,
-                        price_scale,
-                        price_oracle,
-                        last_prices,
-                        vp,
-                        xcp_profit,
-                        _D,
-                        last_timestamp
-                    );
-                    projected_policy.prepare_price_scale_call(
-                        block_timestamp,
-                        price_oracle
-                    );
-                    const T raw_target = projected_policy.keeper_assembled_target();
-                    if (raw_target > Traits::ZERO() && price_scale > Traits::ZERO()) {
-                        keeper_probe->gap_fired = keeper_gap_crossed(
-                            raw_target,
-                            price_scale,
-                            keeper_probe->threshold_bps
-                        );
-                    }
-                    keeper_probe->heartbeat_fired = keeper_probe->heartbeat_due;
-                    keeper_probe->fired =
-                        keeper_probe->gap_fired || keeper_probe->heartbeat_fired;
-                    if (keeper_probe->fired) {
-                        keeper_policy_target = projected_policy.get_price_scale();
-                        have_keeper_policy_target = true;
-                    }
-                }
-            }
-            if (!keeper_probe->fired) {
-                return price_scale;
-            }
-        }
-
         // Rebalance liquidity if there's enough profit (once per block)
         const T lp_repeg_floor = lp_xcp_profit;
         const bool target_profit_ready = vp_boosted > lp_repeg_floor;
         const bool target_block_ready = last_ts < block_timestamp;
-        if (policy.kind != PolicyKind::None) {
-            policy_hook_metrics.record_target_outer_gate(target_profit_ready, target_block_ready);
-        }
         if (target_profit_ready && target_block_ready) {
-            T p_policy = have_keeper_policy_target
-                ? keeper_policy_target
-                : (policy_target_override != nullptr
-                    ? *policy_target_override
-                    : _policy_price_target(block_timestamp, price_oracle));
-            if (policy.kind != PolicyKind::None) {
-                policy_hook_metrics.record_target_eval();
-            }
+            const T p_policy = _policy_price_target(block_timestamp, price_oracle);
             const auto actuator_preview = preview_price_scale_actuator(
                 p_policy,
                 price_oracle,
@@ -1843,27 +1319,12 @@ public:
                 adjustment_step_min,
                 adjustment_step_max
             );
-            const bool policy_target_active =
-                actuator_preview.policy_target_active;
-            if (policy_target_active) {
-                policy_hook_metrics.record_target_nonzero();
-            }
-
-            const bool adjustment_step_above_min =
-                actuator_preview.adjustment_step_above_min;
-
             // vy: p_new defaults to price_scale and the rebalance body runs
             // only if the step-limited move actually changes it (the integer
             // floor can round the move back to price_scale).
             const T p_new = actuator_preview.p_new;
-            if (!adjustment_step_above_min && policy_target_active) {
-                policy_hook_metrics.target_step_min_veto_count += 1;
-            }
 
             if (p_new != price_scale) {
-                if (policy_target_active) {
-                    policy_hook_metrics.record_target_step();
-                }
                 auto xp_new = xp;
                 xp_new[1] = xp[1] * p_new / price_scale;
 
@@ -1875,8 +1336,6 @@ public:
 
                 // Burn donations to reach the LP-protected goal vp.
                 T donation_shares_to_burn = PoolTraits<T>::ZERO();
-                T donation_shares_needed = PoolTraits<T>::ZERO();
-                bool donation_burn_cap_exhausted = false;
                 T goal_vp = PoolTraits<T>::max(lp_repeg_floor, vp);
                 if (new_virtual_price < goal_vp) {
                     // What the total supply would be at goal_vp and new_xcp
@@ -1884,19 +1343,11 @@ public:
                     if (!(tweaked_supply < total_supply)) {
                         throw std::runtime_error("tweaked supply must shrink");
                     }
-                    donation_shares_needed = total_supply - tweaked_supply;
+                    const T donation_shares_needed = total_supply - tweaked_supply;
                     donation_shares_to_burn = PoolTraits<T>::min(
                         donation_shares_needed,
                         donation_unlocked
                     );
-                    donation_burn_cap_exhausted = donation_shares_needed > donation_unlocked;
-                    if (policy_target_active) {
-                        policy_hook_metrics.record_target_donation_burn(
-                            donation_shares_to_burn,
-                            donation_shares_needed,
-                            donation_unlocked
-                        );
-                    }
                     new_virtual_price = (
                         PoolTraits<T>::PRECISION() * new_xcp
                     ) / (total_supply - donation_shares_to_burn);
@@ -1905,16 +1356,6 @@ public:
                 const bool lp_gate_passed =
                     new_virtual_price > PoolTraits<T>::PRECISION() &&
                     new_virtual_price >= lp_repeg_floor;
-                if (keeper_probe != nullptr) {
-                    keeper_probe->prospective_lp_evaluated = true;
-                    keeper_probe->lp_gate_passed = lp_gate_passed;
-                    keeper_probe->lp_below_precision =
-                        !(new_virtual_price > PoolTraits<T>::PRECISION());
-                    keeper_probe->lp_below_floor =
-                        new_virtual_price < lp_repeg_floor;
-                    keeper_probe->donation_burn_cap_exhausted =
-                        donation_burn_cap_exhausted;
-                }
 
                 // Commit only when the LP-protected threshold is preserved
                 if (lp_gate_passed) {
@@ -1944,28 +1385,11 @@ public:
                         totalSupply    -= donation_shares_to_burn;
                         last_donation_release_ts = T(block_timestamp) - new_elapsed;
                     }
-                    if (policy_target_active) {
-                        policy_hook_metrics.record_target_commit();
-                    }
                     _update_policy_state(
                         xp_new, p_new, price_oracle, last_prices,
-                        new_virtual_price, xcp_profit, new_D,
-                        deferred_policy_update
+                        new_virtual_price, xcp_profit, new_D
                     );
                     return p_new;
-                } else {
-                    if (policy_target_active) {
-                        policy_hook_metrics.record_target_lp_veto(
-                            new_virtual_price,
-                            lp_repeg_floor,
-                            PoolTraits<T>::PRECISION(),
-                            donation_burn_cap_exhausted
-                        );
-                    }
-                }
-            } else if (adjustment_step_above_min) {
-                if (policy_target_active) {
-                    policy_hook_metrics.target_step_noop_count += 1;
                 }
             }
         }
@@ -1976,7 +1400,7 @@ public:
         virtual_price = vp;
         _update_policy_state(
             xp, price_scale, price_oracle, last_prices,
-            virtual_price, xcp_profit, D, deferred_policy_update
+            virtual_price, xcp_profit, D
         );
         return price_scale;
     }

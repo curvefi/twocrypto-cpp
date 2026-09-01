@@ -5,9 +5,9 @@
 //   -DTWOCRYPTO_POLICY_HEADER="/abs/path/to/policy.hpp"
 //
 // That header defines the source contract's `ChallengeFeePolicy<T>` in this
-// namespace. Targets built
-// without a selected header use the native passthrough below. A compiled
-// policy may override the fee and price-scale target while the pool retains
+// namespace. Targets built without a selected header expose only
+// PolicyKind::None. A compiled policy may override the fee and price-scale
+// target while the pool retains
 // all clamping, step limiting, LP protection, and rollback semantics.
 #pragma once
 
@@ -17,8 +17,6 @@
 
 #ifdef TWOCRYPTO_POLICY_HEADER
 #include TWOCRYPTO_POLICY_HEADER
-#else
-#include "compiled_passthrough.hpp"
 #endif
 
 namespace arb {
@@ -27,6 +25,7 @@ namespace twocrypto_fx {
 
 namespace compiled_detail {
 
+#ifdef TWOCRYPTO_POLICY_HEADER
 template <typename Policy, typename = void>
 struct UsesNativeFee : std::false_type {};
 
@@ -39,6 +38,10 @@ struct UsesNativeFee<
 template <typename T>
 inline constexpr bool uses_native_fee_v =
     UsesNativeFee<ChallengeFeePolicy<T>>::value;
+#else
+template <typename T>
+inline constexpr bool uses_native_fee_v = false;
+#endif
 
 } // namespace compiled_detail
 

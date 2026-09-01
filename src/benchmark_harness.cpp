@@ -10,7 +10,6 @@
 
 #include <boost/json.hpp>
 
-#include "parity/build_identity.hpp"
 #include "parity/json_utils.hpp"
 #include "parity/pool_config.hpp"
 #include "pools/twocrypto_fx/twocrypto.hpp"
@@ -378,10 +377,6 @@ int run_harness(
 } // namespace
 
 int main(int argc, char* argv[]) {
-    if (arb::parity::handle_build_identity_arg(argc, argv)) {
-        return 0;
-    }
-
     if (argc < 4) {
         std::cerr << "Usage: " << argv[0] << " <pools.json> <sequences.json> <output.json>\n";
         return 1;

@@ -160,15 +160,8 @@ PolicyConfig<uint256> parse_policy_config(const json::value& policy) {
     const auto& object = policy.as_object();
     for (const auto& entry : object) {
         const std::string_view key(entry.key().data(), entry.key().size());
-        if (key == "kind" || key == "reference_kind" ||
-            key == "price_source" || key == "params" ||
-            key == "fee" || key == "fee_bps") {
+        if (key == "kind" || key == "reference_kind" || key == "params") {
             continue;
-        }
-        if (key == "price_source_ema_half_time") {
-            throw std::runtime_error(
-                "policy price_source_ema_half_time is no longer supported"
-            );
         }
         throw std::runtime_error("unknown pool policy field: " + std::string(key));
     }
@@ -181,16 +174,6 @@ PolicyConfig<uint256> parse_policy_config(const json::value& policy) {
         kind = std::string(value->as_string().c_str());
     }
     config.kind = arb::pools::twocrypto_fx::policy_kind_from_string(kind);
-
-    if (auto* source = object.if_contains("price_source")) {
-        if (!source->is_string()) {
-            throw std::runtime_error("pool policy price_source must be a string");
-        }
-        const std::string value(source->as_string().c_str());
-        if (!value.empty() && value != "cex" && value != "event_p_cex") {
-            throw std::runtime_error("external policy price_source is no longer supported");
-        }
-    }
 
     if (auto* params = object.if_contains("params")) {
         if (!params->is_array()) {
@@ -209,18 +192,6 @@ PolicyConfig<uint256> parse_policy_config(const json::value& policy) {
             config.params[i] = uint256(scalar_to_string(values[i]));
         }
         config.n_params = values.size();
-    }
-    if (auto* fee = object.if_contains("fee")) {
-        if (!is_number_or_string(*fee)) {
-            throw std::runtime_error("pool policy fee must be a string or number");
-        }
-        config.fee = parse_config_fee(*fee);
-    } else if (auto* fee_bps = object.if_contains("fee_bps")) {
-        if (!is_number_or_string(*fee_bps)) {
-            throw std::runtime_error("pool policy fee_bps must be a string or number");
-        }
-        config.fee = uint256(scalar_to_string(*fee_bps)) *
-                PoolTraits<uint256>::FEE_PRECISION() / uint256(10000);
     }
     return config;
 }

@@ -99,13 +99,6 @@ class VyperPoolRunner:
     def _deploy_policy(self, kind: str, pool: Any, spec: dict[str, Any]) -> Any:
         if kind in ("", "none"):
             return None
-        if kind == "twocrypto_policy":
-            return boa.load(str(self._contract("contracts/main/TwocryptoPolicy.vy")), pool.address)
-        if kind == "zero_stub":
-            return boa.load(str(self._contract("tests/mocks/ZeroStubPolicy.vy")))
-        if kind in ("oracle_x2", "price_oracle_x2", "oracle_x2_sequential_fee"):
-            policy_path = Path(__file__).with_name("vyper_pool") / "oracle_x2_sequential_fee_policy.vy"
-            return boa.load(str(policy_path), pool.address)
         if kind == "compiled" and spec.get("reference_kind") == "yb_twocrypto_policy":
             values = spec.get("params")
             if not isinstance(values, list) or len(values) != 6:

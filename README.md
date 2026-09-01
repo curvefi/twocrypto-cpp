@@ -21,7 +21,7 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel
 ```
 
-The standalone CMake build enables pool-local tests by default. The `cmake --install` step below writes a disposable checkout-local prefix for the sibling harness; it is not a system installation or a published SDK. Policy implementations remain private parity fixtures and are not installed. The staged target retains the native pool policy, policy ABI, and compiled-policy passthrough.
+The standalone CMake build enables pool-local tests by default. The `cmake --install` step below writes a disposable checkout-local prefix for the sibling harness; it is not a system installation or a published SDK. Policy implementations remain private parity fixtures and are not installed. Without a selected compiled policy, the staged target exposes only the native pool.
 
 ```sh
 cmake --install build --prefix "$PWD/_install"
@@ -53,7 +53,7 @@ pool.restore_mutable(before);
 bool native_fee = pool.uses_native_fee_model();
 ```
 
-`MutableSnapshot` covers mutable pool, policy, research, and hook-metric fields changed by a transaction while excluding immutable configuration. It is allocation-free. `uses_native_fee_model()` is true for native pools and for compiled policies that explicitly declare zero-return native-fee fallback.
+`MutableSnapshot` covers mutable pool and compiled-policy state changed by a transaction while excluding immutable configuration. It is allocation-free. `uses_native_fee_model()` is true for native pools and for compiled policies that explicitly declare zero-return native-fee fallback.
 
 ## Private compiled-policy extension
 
@@ -62,16 +62,16 @@ another private executable) may define `TWOCRYPTO_POLICY_HEADER` to a regular
 header that provides the source contract's `ChallengeFeePolicy<T>` in
 `arb::pools::twocrypto_fx`. The pool retains clamping, step limiting, LP
 protection, rollback, and actuator authority. Without a selected header,
-`pools/twocrypto_fx/policies/compiled_passthrough.hpp` delegates to native
-surfaces. Concrete policy selection is intentionally owned by that executable,
-not by the installed pool package. The pool checkout exposes
+`compiled` is unavailable; use `PolicyKind::None` for the native pool.
+Concrete policy selection is intentionally owned by that executable, not by
+the installed pool package. The pool checkout exposes
 `TWOCRYPTO_PARITY_POLICY_PATH` only for private parity test/benchmark targets;
 that value is never exported with `twocrypto::pool`.
 
 The checked-in `include/pools/twocrypto_fx/policies/yieldbasis.hpp` is the exact
 `uint256` translation of the pinned `YBTwocryptoPolicy.vy`. Build the private
-policy evaluator and pool harness, then run the 59 upstream policy cases and
-the pool-integrated state comparison:
+policy evaluator and pool harness, then run the 59 upstream policy cases, exact
+native uint parity, and the pool-integrated state comparison:
 
 ```sh
 cmake -S . -B build/yb-parity -DCMAKE_BUILD_TYPE=Release \
@@ -84,7 +84,7 @@ TWOCRYPTO_YB_EVALUATOR="$PWD/build/yb-parity/yb_policy_evaluator_i" \
   TWOCRYPTO_HARNESS_I="$PWD/build/yb-parity/benchmark_harness_i" \
   uv run --frozen --no-sync pytest -q -o addopts='' \
   tests/test_yb_policy_parity.py \
-  tests/test_boa_parity_fxswap_ext_fee.py::test_boa_cpp_pool_integrated_yb_policy_parity
+  tests/test_boa_parity_fxswap_ext_fee.py
 ```
 
 The installed pool package does not select or hash a concrete policy. Policy
@@ -115,11 +115,9 @@ create all pool and action inputs in temporary directories.
 
 The Vyper authority is the `reference/twocrypto-ng` Git submodule. Its tracked
 gitlink commit is the revision record; `.gitmodules` records the upstream URL
-and `invariant-change` branch. Private parity reports may retain the pool
-revision, submodule revision, compiler/build mode, harness identity,
-selected-policy ID, and explicit input paths. These details are not part of
-the installed pool package; the pool CMake does not inspect Git or policy
-headers.
+and `invariant-change` branch. Build provenance belongs to the final evaluator
+that selects and compiles the pool policy; this pool package does not emit
+placeholder revision or compiler identities.
 
 This private repository does not grant redistribution rights for its source or pinned reference. Obtain maintainer authorization before sharing either; never substitute an unpinned checkout for an unavailable reference.
 

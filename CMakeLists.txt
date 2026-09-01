@@ -69,8 +69,7 @@ endfunction()
 function(pool_private_parity_policy TARGET_NAME)
     if(_twocrypto_parity_policy_abs)
         target_compile_definitions(${TARGET_NAME} PRIVATE
-            TWOCRYPTO_POLICY_HEADER="${_twocrypto_parity_policy_abs}"
-            TWOCRYPTO_POOL_POLICY_PATH="${_twocrypto_parity_policy_abs}")
+            TWOCRYPTO_POLICY_HEADER="${_twocrypto_parity_policy_abs}")
     endif()
 endfunction()
 
@@ -83,8 +82,6 @@ if(TWOCRYPTO_POOL_BUILD_BENCHMARKS)
     target_link_libraries(benchmark_harness_i PRIVATE
         twocrypto::pool Boost::json Threads::Threads)
     pool_private_defaults(benchmark_harness_i)
-    target_compile_definitions(benchmark_harness_i PRIVATE
-        TWOCRYPTO_ENABLE_PARITY_POLICIES=1)
     pool_private_parity_policy(benchmark_harness_i)
 endif()
 
@@ -103,8 +100,6 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_pool_snapshot.cpp")
     add_executable(test_pool_snapshot tests/test_pool_snapshot.cpp)
     target_link_libraries(test_pool_snapshot PRIVATE twocrypto::pool)
     pool_private_defaults(test_pool_snapshot)
-    target_compile_definitions(test_pool_snapshot PRIVATE
-        TWOCRYPTO_ENABLE_PARITY_POLICIES=1)
     pool_private_parity_policy(test_pool_snapshot)
     add_test(NAME test_pool_snapshot COMMAND test_pool_snapshot)
 endif()
@@ -114,6 +109,7 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_numeric_policy.cpp")
     add_executable(test_numeric_policy tests/test_numeric_policy.cpp)
     target_link_libraries(test_numeric_policy PRIVATE twocrypto::pool)
     pool_private_defaults(test_numeric_policy)
+    pool_private_parity_policy(test_numeric_policy)
     add_test(NAME test_numeric_policy COMMAND test_numeric_policy)
 endif()
 
@@ -121,8 +117,6 @@ endif()
 
 install(DIRECTORY include/pools/twocrypto_fx/
     DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/pools/twocrypto_fx"
-    PATTERN "fixed.hpp" EXCLUDE
-    PATTERN "sequential.hpp" EXCLUDE
     PATTERN "yieldbasis.hpp" EXCLUDE)
 install(TARGETS twocrypto_pool EXPORT twocrypto_poolTargets)
 install(EXPORT twocrypto_poolTargets

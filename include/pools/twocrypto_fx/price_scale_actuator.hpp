@@ -1,6 +1,5 @@
-// Pure preview of Twocrypto's policy-target clamp and price_scale actuator.
-// The helper is shared by tweak_price and keeper view logic so an off-chain
-// trigger cannot drift from the transaction's exact p_new arithmetic.
+// Twocrypto's policy-target clamp and price_scale actuator, kept separate so
+// tweak_price applies native and compiled targets through the same arithmetic.
 #pragma once
 
 namespace arb::pools::twocrypto_fx {

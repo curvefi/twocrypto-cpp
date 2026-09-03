@@ -1471,6 +1471,16 @@ public:
         }
     }
 
+    void refresh_policy_context(
+        const T& price_feed,
+        uint64_t price_feed_timestamp
+    ) {
+        if (policy.kind != PolicyKind::None) {
+            policy.prepare_price_scale_call(block_timestamp, cached_price_oracle);
+            policy.set_price_feed(price_feed, price_feed_timestamp);
+        }
+    }
+
     void set_block_timestamp(uint64_t ts) {
         block_timestamp = ts;
         policy.set_block_timestamp(ts);

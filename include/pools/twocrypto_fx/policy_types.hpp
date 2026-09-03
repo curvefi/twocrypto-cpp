@@ -66,6 +66,12 @@ template <typename T>
 struct PolicyResearchContext {
     uint64_t block_timestamp{0};
     T price_oracle{T(0)};
+    // Latest generic price feed attached by the simulation harness. This is
+    // deliberately separate from the pool's native EMA oracle so compiled
+    // policies can consume any causal model/oracle/market feed without changing pool
+    // accounting semantics.
+    T price_feed{T(0)};
+    uint64_t price_feed_timestamp{0};
 };
 
 template <typename T>

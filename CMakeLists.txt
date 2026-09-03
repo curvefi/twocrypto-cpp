@@ -113,6 +113,14 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_numeric_policy.cpp")
     add_test(NAME test_numeric_policy COMMAND test_numeric_policy)
 endif()
 
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_price_feed_policy.cpp")
+    enable_testing()
+    add_executable(test_price_feed_policy tests/test_price_feed_policy.cpp)
+    target_link_libraries(test_price_feed_policy PRIVATE twocrypto::pool)
+    pool_private_defaults(test_price_feed_policy)
+    add_test(NAME test_price_feed_policy COMMAND test_price_feed_policy)
+endif()
+
 endif()
 
 install(DIRECTORY include/pools/twocrypto_fx/

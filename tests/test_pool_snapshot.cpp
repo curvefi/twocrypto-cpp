@@ -43,7 +43,10 @@ bool same_pool_state(const Pool& a, const Pool& b) {
         a.donation_shares == b.donation_shares &&
         a.last_donation_release_ts == b.last_donation_release_ts &&
         a.policy.research.block_timestamp == b.policy.research.block_timestamp &&
-        a.policy.research.price_oracle == b.policy.research.price_oracle;
+        a.policy.research.price_oracle == b.policy.research.price_oracle &&
+        a.policy.research.price_feed == b.policy.research.price_feed &&
+        a.policy.research.price_feed_timestamp ==
+            b.policy.research.price_feed_timestamp;
 }
 
 #ifdef TWOCRYPTO_POLICY_HEADER
@@ -75,7 +78,7 @@ void test_compiled_policy_rollback() {
     pool.balances = {101.0, 202.0};
     pool.D = 303.0;
     pool.totalSupply = 404.0;
-    pool.policy.research = {2'020, 2'121.0};
+    pool.policy.research = {2'020, 2'121.0, 2'222.0, 2'323};
     auto& state = pool.policy.compiled_state;
     state.last_update_ts = 3'030;
     state.last_prices = 3'131.0;

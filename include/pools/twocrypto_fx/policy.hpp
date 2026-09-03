@@ -114,6 +114,17 @@ public:
         research.price_oracle = price_oracle;
     }
 
+    void set_price_feed(const T& price, uint64_t timestamp) {
+        if (!(price > T(0))) {
+            throw std::invalid_argument("policy price feed must be positive");
+        }
+        if (timestamp > research.block_timestamp) {
+            throw std::invalid_argument("policy price feed is from the future");
+        }
+        research.price_feed = price;
+        research.price_feed_timestamp = timestamp;
+    }
+
     void set_block_timestamp(uint64_t block_timestamp) {
         research.block_timestamp = block_timestamp;
     }
@@ -134,7 +145,7 @@ public:
         throw std::logic_error("unsupported policy kind in fee floor");
     }
 
-    T get_fee(const std::array<T, 2>& xp) const {
+    T get_fee([[maybe_unused]] const std::array<T, 2>& xp) const {
         switch (kind) {
         case PolicyKind::None:
             return T(0);
@@ -167,14 +178,14 @@ public:
     }
 
     void update_state(
-        const std::array<T, 2>& xp,
-        const T& price_scale,
-        const T& price_oracle,
-        const T& last_prices,
-        const T& virtual_price,
-        const T& xcp_profit,
-        const T& d_value,
-        uint64_t oracle_timestamp
+        [[maybe_unused]] const std::array<T, 2>& xp,
+        [[maybe_unused]] const T& price_scale,
+        [[maybe_unused]] const T& price_oracle,
+        [[maybe_unused]] const T& last_prices,
+        [[maybe_unused]] const T& virtual_price,
+        [[maybe_unused]] const T& xcp_profit,
+        [[maybe_unused]] const T& d_value,
+        [[maybe_unused]] uint64_t oracle_timestamp
     ) {
         if (kind == PolicyKind::None) return;
         if (kind != PolicyKind::Compiled) {

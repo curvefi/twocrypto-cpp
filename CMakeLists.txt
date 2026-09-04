@@ -121,6 +121,14 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_price_feed_policy.cpp")
     add_test(NAME test_price_feed_policy COMMAND test_price_feed_policy)
 endif()
 
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_fair_price_fee_policy.cpp")
+    enable_testing()
+    add_executable(test_fair_price_fee_policy tests/test_fair_price_fee_policy.cpp)
+    target_link_libraries(test_fair_price_fee_policy PRIVATE twocrypto::pool)
+    pool_private_defaults(test_fair_price_fee_policy)
+    add_test(NAME test_fair_price_fee_policy COMMAND test_fair_price_fee_policy)
+endif()
+
 endif()
 
 install(DIRECTORY include/pools/twocrypto_fx/

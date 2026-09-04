@@ -107,6 +107,11 @@ public:
         config.fee_precision = fee_precision;
         config.adjustment_step_min = adjustment_step_min;
         config.adjustment_step_max = adjustment_step_max;
+#ifdef TWOCRYPTO_POLICY_HEADER
+        if (kind == PolicyKind::Compiled) {
+            ChallengeFeePolicy<T>::validate_params(params, config);
+        }
+#endif
     }
 
     void prepare_price_scale_call(uint64_t block_timestamp, const T& price_oracle) {

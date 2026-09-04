@@ -95,7 +95,9 @@ struct ChallengeFeePolicy {
     static T min_cap(const PolicyConfig<T>& params) { return param(params, 4); }
     static T max_cap(const PolicyConfig<T>& params) { return param(params, 5); }
 
-    static void validate_params(const PolicyConfig<T>& params) {
+    static void validate_params(
+        const PolicyConfig<T>& params, const PolicyPoolConfig<T>& = {}
+    ) {
         const uint64_t fast = fast_half_life(params);
         const uint64_t slow = slow_half_life(params);
         const T one = precision();
@@ -261,7 +263,6 @@ struct ChallengeFeePolicy {
         const PolicyConfig<T>& params,
         const PolicyPoolConfig<T>&
     ) {
-        validate_params(params);
         const T current = state.price_scale;
         if (current == T(0)) return T(0);
 
@@ -285,7 +286,6 @@ struct ChallengeFeePolicy {
         const PolicyPoolConfig<T>&,
         const PolicyUpdate<T>& update
     ) {
-        validate_params(params);
         const uint64_t now = research.block_timestamp;
         if (now < state.last_update_ts) {
             throw std::underflow_error("policy timestamp");

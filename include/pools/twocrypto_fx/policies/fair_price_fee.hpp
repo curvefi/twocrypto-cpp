@@ -31,25 +31,21 @@ struct ChallengeFeePolicy {
         T D{T(0)};
     };
 
-    static T param(const PolicyConfig<T>& params, std::size_t index) {
-        if (params.n_params != PARAM_COUNT) {
-            throw std::invalid_argument("fair-price fee policy requires 2 parameters");
-        }
-        return params.params[index];
-    }
-
     static T base_fee(const PolicyConfig<T>& params) {
-        return param(params, 0);
+        return params.params[0];
     }
 
     static T capture(const PolicyConfig<T>& params) {
-        return param(params, 1);
+        return params.params[1];
     }
 
     static void validate_params(
         const PolicyConfig<T>& params,
         const PolicyPoolConfig<T>& config
     ) {
+        if (params.n_params != PARAM_COUNT) {
+            throw std::invalid_argument("fair-price fee policy requires 2 parameters");
+        }
         const T fee = base_fee(params);
         const T share = capture(params);
         if (!(config.precision > T(0)) || !(config.fee_precision > T(0))) {
@@ -77,15 +73,8 @@ struct ChallengeFeePolicy {
         const T& price_scale,
         const T& precision
     ) {
-        const T ann = amp * T(2);
-        T dr = d_value / T(4);
-        dr = dr * d_value / xp[0];
-        dr = dr * d_value / xp[1];
-        const T xp0_a = ann * xp[0] / T(10000);
-        const T normalized = precision * (
-            xp0_a + dr * xp[0] / xp[1]
-        ) / (xp0_a + dr);
-        return normalized * price_scale / precision;
+        return MathOps<T>::get_p(xp, d_value, {amp, T(0)}) *
+            price_scale / precision;
     }
 
     static T get_fee(
@@ -95,8 +84,6 @@ struct ChallengeFeePolicy {
         const PolicyResearchContext<T>& research,
         const std::array<T, 2>& xp_new
     ) {
-        validate_params(params, config);
-
         const auto& xp_old = state.xp;
         const bool is_1_to_0 =
             xp_new[1] > xp_old[1] && xp_new[0] < xp_old[0];
@@ -184,31 +171,28 @@ struct ChallengeFeePolicy {
 
     static T fee_floor(
         const PolicyConfig<T>& params,
-        const PolicyPoolConfig<T>& config,
+        const PolicyPoolConfig<T>&,
         const T&
     ) {
-        validate_params(params, config);
         return base_fee(params);
     }
 
     static T get_price_scale(
         State&,
         PolicyResearchContext<T>&,
-        const PolicyConfig<T>& params,
-        const PolicyPoolConfig<T>& config
+        const PolicyConfig<T>&,
+        const PolicyPoolConfig<T>&
     ) {
-        validate_params(params, config);
         return T(0);
     }
 
     static void update_state(
         State& state,
         PolicyResearchContext<T>&,
-        const PolicyConfig<T>& params,
-        const PolicyPoolConfig<T>& config,
+        const PolicyConfig<T>&,
+        const PolicyPoolConfig<T>&,
         const PolicyUpdate<T>& update
     ) {
-        validate_params(params, config);
         state.xp = update.xp;
         state.price_scale = update.price_scale;
         state.D = update.D;

@@ -63,6 +63,8 @@ header that provides the source contract's `ChallengeFeePolicy<T>` in
 `arb::pools::twocrypto_fx`. The pool retains clamping, step limiting, LP
 protection, rollback, and actuator authority. Without a selected header,
 `compiled` is unavailable; use `PolicyKind::None` for the native pool.
+A compiled policy supplies `validate_params(params, pool_config)`, called once
+at pool initialization; its quote hooks retain state-dependent checks.
 Concrete policy selection is intentionally owned by that executable, not by
 the installed pool package. The pool checkout exposes
 `TWOCRYPTO_PARITY_POLICY_PATH` only for private parity test/benchmark targets;

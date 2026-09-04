@@ -86,54 +86,31 @@ if(TWOCRYPTO_POOL_BUILD_BENCHMARKS)
 endif()
 
 if(TWOCRYPTO_POOL_BUILD_TESTS)
-find_package(Boost 1.79 REQUIRED COMPONENTS json)
-
-add_executable(yb_policy_evaluator_i tests/yb_policy_evaluator.cpp)
-target_link_libraries(yb_policy_evaluator_i PRIVATE twocrypto::pool Boost::json)
-pool_private_defaults(yb_policy_evaluator_i)
-
-
-# The snapshot test is supplied by the pool product and is intentionally
-# conditional so package consumers may install headers without test sources.
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_pool_snapshot.cpp")
+    find_package(Boost 1.79 REQUIRED COMPONENTS json)
     enable_testing()
-    add_executable(test_pool_snapshot tests/test_pool_snapshot.cpp)
-    target_link_libraries(test_pool_snapshot PRIVATE twocrypto::pool)
-    pool_private_defaults(test_pool_snapshot)
+
+    add_executable(yb_policy_evaluator_i tests/yb_policy_evaluator.cpp)
+    target_link_libraries(yb_policy_evaluator_i PRIVATE twocrypto::pool Boost::json)
+    pool_private_defaults(yb_policy_evaluator_i)
+
+    foreach(test IN ITEMS test_pool_snapshot test_numeric_policy
+                          test_price_feed_policy test_fair_price_fee_policy)
+        add_executable(${test} tests/${test}.cpp)
+        target_link_libraries(${test} PRIVATE twocrypto::pool)
+        pool_private_defaults(${test})
+        add_test(NAME ${test} COMMAND ${test})
+    endforeach()
     pool_private_parity_policy(test_pool_snapshot)
-    add_test(NAME test_pool_snapshot COMMAND test_pool_snapshot)
-endif()
-
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_numeric_policy.cpp")
-    enable_testing()
-    add_executable(test_numeric_policy tests/test_numeric_policy.cpp)
-    target_link_libraries(test_numeric_policy PRIVATE twocrypto::pool)
-    pool_private_defaults(test_numeric_policy)
     pool_private_parity_policy(test_numeric_policy)
-    add_test(NAME test_numeric_policy COMMAND test_numeric_policy)
-endif()
-
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_price_feed_policy.cpp")
-    enable_testing()
-    add_executable(test_price_feed_policy tests/test_price_feed_policy.cpp)
-    target_link_libraries(test_price_feed_policy PRIVATE twocrypto::pool)
-    pool_private_defaults(test_price_feed_policy)
-    add_test(NAME test_price_feed_policy COMMAND test_price_feed_policy)
-endif()
-
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_fair_price_fee_policy.cpp")
-    enable_testing()
-    add_executable(test_fair_price_fee_policy tests/test_fair_price_fee_policy.cpp)
-    target_link_libraries(test_fair_price_fee_policy PRIVATE twocrypto::pool)
-    pool_private_defaults(test_fair_price_fee_policy)
-    add_test(NAME test_fair_price_fee_policy COMMAND test_fair_price_fee_policy)
-endif()
-
 endif()
 
 install(DIRECTORY include/pools/twocrypto_fx/
     DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/pools/twocrypto_fx"
-    PATTERN "yieldbasis.hpp" EXCLUDE)
+    PATTERN "yieldbasis.hpp" EXCLUDE
+    PATTERN "price_feed.hpp" EXCLUDE
+    PATTERN "fair_price_fee.hpp" EXCLUDE
+    PATTERN "implied_fair_fee.hpp" EXCLUDE
+    PATTERN "revealed_fair_fee.hpp" EXCLUDE)
 install(TARGETS twocrypto_pool EXPORT twocrypto_poolTargets)
 install(EXPORT twocrypto_poolTargets
     FILE twocrypto_poolTargets.cmake

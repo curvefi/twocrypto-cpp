@@ -26,7 +26,9 @@ struct ChallengeFeePolicy {
         T price_scale{T(0)};
     };
 
-    static void validate_params(const PolicyConfig<T>& params) {
+    static void validate_params(
+        const PolicyConfig<T>& params, const PolicyPoolConfig<T>& = {}
+    ) {
         if (params.n_params != PARAM_COUNT) {
             throw std::invalid_argument("price-feed policy takes no parameters");
         }
@@ -34,31 +36,28 @@ struct ChallengeFeePolicy {
 
     static T get_fee(
         const State&,
-        const PolicyConfig<T>& params,
+        const PolicyConfig<T>&,
         const PolicyPoolConfig<T>&,
         const PolicyResearchContext<T>&,
         const std::array<T, 2>&
     ) {
-        validate_params(params);
         return T(0);
     }
 
     static T fee_floor(
-        const PolicyConfig<T>& params,
+        const PolicyConfig<T>&,
         const PolicyPoolConfig<T>&,
         const T& native_floor
     ) {
-        validate_params(params);
         return native_floor;
     }
 
     static T get_price_scale(
         State& state,
         PolicyResearchContext<T>& research,
-        const PolicyConfig<T>& params,
+        const PolicyConfig<T>&,
         const PolicyPoolConfig<T>&
     ) {
-        validate_params(params);
         if (!(research.price_feed > T(0))) {
             throw std::runtime_error("price-feed policy requires an attached feed");
         }
@@ -78,11 +77,10 @@ struct ChallengeFeePolicy {
     static void update_state(
         State& state,
         PolicyResearchContext<T>&,
-        const PolicyConfig<T>& params,
+        const PolicyConfig<T>&,
         const PolicyPoolConfig<T>&,
         const PolicyUpdate<T>& update
     ) {
-        validate_params(params);
         state.price_scale = update.price_scale;
     }
 };

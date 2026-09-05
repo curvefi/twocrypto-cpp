@@ -29,6 +29,7 @@ struct ChallengeFeePolicy {
         std::array<T, 2> xp{T(0), T(0)};
         T price_scale{T(0)};
         T D{T(0)};
+        T p_old{T(0)};
     };
 
     static T base_fee(const PolicyConfig<T>& params) {
@@ -119,9 +120,7 @@ struct ChallengeFeePolicy {
         if (!(dy_xp > rounding_unit)) return max_fee;
         dy_xp -= rounding_unit;
 
-        const T p_old = marginal_price(
-            xp_old, state.D, config.A, state.price_scale, config.precision
-        );
+        const T p_old = state.p_old;
         const T p_new = marginal_price(
             xp_new, state.D, config.A, state.price_scale, config.precision
         );
@@ -190,12 +189,20 @@ struct ChallengeFeePolicy {
         State& state,
         PolicyResearchContext<T>&,
         const PolicyConfig<T>&,
-        const PolicyPoolConfig<T>&,
+        const PolicyPoolConfig<T>& config,
         const PolicyUpdate<T>& update
     ) {
         state.xp = update.xp;
         state.price_scale = update.price_scale;
         state.D = update.D;
+        // Every sizing probe shares this committed endpoint. Preserve the
+        // same arithmetic, but compute it once after a pool state update.
+        state.p_old = state.price_scale > T(0) && state.D > T(0) &&
+            state.xp[0] > T(0) && state.xp[1] > T(0)
+            ? marginal_price(
+                state.xp, state.D, config.A, state.price_scale, config.precision
+            )
+            : T(0);
     }
 };
 

@@ -25,6 +25,19 @@ fx::PolicyPoolConfig<T> pool_config(
     return config;
 }
 
+template <typename T>
+void seed_state(
+    typename fx::ChallengeFeePolicy<T>::State& state,
+    const fx::PolicyConfig<T>& params,
+    const fx::PolicyPoolConfig<T>& config,
+    fx::PolicyResearchContext<T>& research
+) {
+    const T zero{0};
+    fx::ChallengeFeePolicy<T>::update_state(state, research, params, config, {
+        state.xp, state.price_scale, zero, zero, zero, zero, state.D, 100
+    });
+}
+
 void test_uint_matches_python_vyper_lattice_reference() {
     using T = fx::uint256;
     using Policy = fx::ChallengeFeePolicy<T>;
@@ -50,6 +63,7 @@ void test_uint_matches_python_vyper_lattice_reference() {
     research.block_timestamp = 100;
     research.price_feed = T("105000000000000000000000");
     research.price_feed_timestamp = 100;
+    seed_state<T>(state, params, config, research);
 
     require(
         Policy::marginal_price(
@@ -104,6 +118,7 @@ void test_double_capture_and_admission_boundaries() {
     params.params = {0.01, 0.0};
     params.n_params = 2;
 
+    seed_state<T>(state, params, config, research);
     require(
         std::abs(Policy::get_fee(state, params, config, research, xp_new) - 0.01) < 1e-15,
         "zero capture did not preserve the fixed base fee"
@@ -142,6 +157,7 @@ void test_non_swap_falls_back_and_update_stores_only_required_state() {
     params.n_params = 2;
     typename Policy::State state{{500000.0, 500000.0}, 100000.0, 1000000.0};
     fx::PolicyResearchContext<T> research{100, 0.0, 105000.0, 100};
+    seed_state<T>(state, params, config, research);
 
     require(
         Policy::get_fee(state, params, config, research, state.xp) == 0.0,
@@ -166,6 +182,16 @@ void test_non_swap_falls_back_and_update_stores_only_required_state() {
         Policy::get_price_scale(state, research, params, config) == 0.0,
         "fee-only policy overrode the native price-scale target"
     );
+
+    const std::array<T, 2> balanced{500000.0, 500000.0};
+    Policy::update_state(state, research, params, config, {
+        balanced, 200000.0, 1.0, 1.0, 1.0, 1.0, 1000000.0, 101
+    });
+    research.price_feed = 190000.0;
+    require(std::abs(Policy::get_fee(state, params, config, research, {
+        308948.3432124888, 693144.5149141062
+    }) - 0.0247966553) < 1e-9,
+        "fee quote did not follow the updated pool state");
 }
 
 } // namespace

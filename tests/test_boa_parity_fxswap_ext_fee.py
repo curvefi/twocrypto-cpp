@@ -195,6 +195,56 @@ def test_boa_cpp_uint256_parity_for_native_pool(tmp_path: Path) -> None:
             )
 
 
+def test_cpp_snapshots_keep_final_same_timestamp_action(tmp_path: Path, monkeypatch) -> None:
+    wad = "1000000000000000000"
+    sequence = {
+        "sequences": [{
+            "name": "same_timestamp_final_mutation",
+            "start_timestamp": 1700000000,
+            "actions": [
+                {"type": "exchange", "i": 0, "j": 1, "dx": wad},
+                {"type": "exchange", "i": 1, "j": 0, "dx": wad},
+                {"type": "add_liquidity", "amounts": [wad, wad]},
+            ],
+        }],
+    }
+    pools_path, sequences_path, output_path = (
+        tmp_path / name for name in ("pools.json", "sequences.json", "cpp.json")
+    )
+    _write_json(pools_path, {"pools": [_pool("snapshot_regression", "none")]})
+    _write_json(sequences_path, sequence)
+    def run_states(path: Path) -> list[dict]:
+        return _states_by_pool(_run_cpp(pools_path, sequences_path, path))[
+            "snapshot_regression"
+        ]
+
+    monkeypatch.setenv("SNAPSHOT_EVERY", "1")
+    dense = run_states(output_path)
+    monkeypatch.setenv("SNAPSHOT_EVERY", "2")
+    sparse = run_states(tmp_path / "sparse.json")
+    assert len(dense) == 4 and len(sparse) == 3
+    assert sparse[-1] == dense[-1]
+    assert sparse[-2] != sparse[-1]
+
+    monkeypatch.setenv("SNAPSHOT_EVERY", "0")
+    last = _run_cpp(pools_path, sequences_path, tmp_path / "last-only.json")
+    assert last["results"][0]["result"]["final_state"] == dense[-1]
+
+    sequence["sequences"][0]["actions"].append({"type": "time_travel", "seconds": 0})
+    _write_json(sequences_path, sequence)
+    empty_state = _run_cpp(pools_path, sequences_path, tmp_path / "empty-last.json")[
+        "results"
+    ][0]["result"]["final_state"]
+    assert empty_state["action_success"] is True and "action_result" not in empty_state
+    sequence["sequences"][0]["actions"][-1] = {"type": "unsupported_action"}
+    _write_json(sequences_path, sequence)
+    failed_state = _run_cpp(pools_path, sequences_path, tmp_path / "failed-last.json")[
+        "results"
+    ][0]["result"]["final_state"]
+    assert failed_state["action_success"] is False
+    assert "action_result" not in failed_state and "error" in failed_state
+
+
 def test_boa_cpp_pool_integrated_yb_policy_parity(tmp_path: Path) -> None:
     _require_cpp_harness()
     pool = _pool("policy_yieldbasis", "compiled")

@@ -9,8 +9,8 @@
 #include <string>
 #include <type_traits>
 
-#include "pools/twocrypto_fx/policies/common.hpp"
 #include "pools/twocrypto_fx/policy_descriptor.hpp"
+#include "pools/twocrypto_fx/policy_types.hpp"
 #include "pools/twocrypto_fx/stableswap_math.hpp"
 
 namespace arb::pools::twocrypto_fx {

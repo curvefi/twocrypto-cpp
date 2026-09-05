@@ -13,7 +13,7 @@
 
 #include <type_traits>
 
-#include "common.hpp"
+#include "pools/twocrypto_fx/policy_types.hpp"
 
 #ifdef TWOCRYPTO_POLICY_HEADER
 #include TWOCRYPTO_POLICY_HEADER

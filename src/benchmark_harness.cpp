@@ -165,12 +165,11 @@ json::object run_one_pool(
     bool all_success = true;
     bool last_success = true;
     std::string last_error;
+    std::string last_action_result;
 
     TwoCryptoPool<uint256> pool = arb::parity::make_pool(pool_config, sequence);
 
     json::array states;
-    json::object last_state;
-    bool have_last_state = false;
 
     if (snapshot_every != 0) {
         states.push_back(snapshot_pool(pool));
@@ -200,6 +199,7 @@ json::object run_one_pool(
         all_success = all_success && success;
         last_success = success;
         last_error = err;
+        last_action_result = success ? action_result : "";
 
         if (snapshot_every != 0) {
             json::object state = snapshot_pool(pool);
@@ -213,12 +213,11 @@ json::object run_one_pool(
 
             if (snapshot_every == 1) {
                 states.push_back(state);
-            } else {
-                if (((action_idx + 1) % snapshot_every) == 0) {
-                    states.push_back(state);
-                }
-                last_state = state;
-                have_last_state = true;
+            } else if (
+                ((action_idx + 1) % snapshot_every) == 0 ||
+                action_idx + 1 == actions.size()
+            ) {
+                states.push_back(state);
             }
         }
     }
@@ -233,29 +232,14 @@ json::object run_one_pool(
     if (snapshot_every == 0) {
         json::object state = snapshot_pool(pool);
         state["action_success"] = last_success;
+        if (last_success && !last_action_result.empty()) {
+            state["action_result"] = last_action_result;
+        }
         if (!last_success) {
             state["error"] = last_error;
         }
         result["final_state"] = state;
     } else {
-        if (snapshot_every > 1 && have_last_state) {
-            bool same = false;
-            if (!states.empty()) {
-                const auto& back = states.back();
-                if (back.is_object()) {
-                    const auto& back_object = back.as_object();
-                    if (
-                        back_object.if_contains("timestamp") &&
-                        last_state.if_contains("timestamp")
-                    ) {
-                        same = back_object.at("timestamp") == last_state.at("timestamp");
-                    }
-                }
-            }
-            if (!same) {
-                states.push_back(last_state);
-            }
-        }
         result["states"] = states;
     }
 

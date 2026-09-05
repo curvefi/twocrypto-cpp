@@ -3,6 +3,7 @@
 
 #include <boost/json.hpp>
 
+#include <charconv>
 #include <cstdint>
 #include <cstdlib>
 #include <fstream>
@@ -10,6 +11,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 
 namespace arb::parity {
 
@@ -43,6 +45,29 @@ inline std::string get_str(const boost::json::object& object, const char* key) {
     return std::string(it->value().as_string().c_str());
 }
 
+inline uint64_t parse_u64_value(const boost::json::value& value, const char* key) {
+    if (value.is_uint64()) return value.as_uint64();
+    if (value.is_int64()) {
+        if (value.as_int64() < 0) {
+            throw std::runtime_error(std::string("expected nonnegative uint64 for key: ") + key);
+        }
+        return static_cast<uint64_t>(value.as_int64());
+    }
+    if (value.is_string()) {
+        const std::string_view raw(value.as_string().data(), value.as_string().size());
+        if (raw.empty()) {
+            throw std::runtime_error(std::string("expected nonnegative uint64 for key: ") + key);
+        }
+        uint64_t parsed = 0;
+        const auto result = std::from_chars(raw.data(), raw.data() + raw.size(), parsed);
+        if (result.ec != std::errc{} || result.ptr != raw.data() + raw.size()) {
+            throw std::runtime_error(std::string("expected nonnegative uint64 for key: ") + key);
+        }
+        return parsed;
+    }
+    throw std::runtime_error(std::string("expected integer for key: ") + key);
+}
+
 inline uint64_t get_u64_opt(
     const boost::json::object& object,
     const char* key,
@@ -50,17 +75,7 @@ inline uint64_t get_u64_opt(
 ) {
     const auto it = object.find(key);
     if (it == object.end()) return default_value;
-    const auto& value = it->value();
-    if (value.is_uint64()) return value.as_uint64();
-    if (value.is_int64()) return static_cast<uint64_t>(value.as_int64());
-    if (value.is_string()) {
-        try {
-            return static_cast<uint64_t>(std::stoull(std::string(value.as_string().c_str())));
-        } catch (...) {
-            return default_value;
-        }
-    }
-    return default_value;
+    return parse_u64_value(it->value(), key);
 }
 
 inline uint64_t env_u64(const char* key, uint64_t default_value) {
@@ -104,4 +119,3 @@ inline std::string read_file(const std::string& path) {
 }
 
 } // namespace arb::parity
-

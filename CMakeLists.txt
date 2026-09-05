@@ -93,10 +93,13 @@ if(TWOCRYPTO_POOL_BUILD_TESTS)
     target_link_libraries(yb_policy_evaluator_i PRIVATE twocrypto::pool Boost::json)
     pool_private_defaults(yb_policy_evaluator_i)
 
-    foreach(test IN ITEMS test_pool_snapshot test_numeric_policy
+    foreach(test IN ITEMS test_pool_snapshot test_numeric_policy test_parity_config
                           test_price_feed_policy test_fair_price_fee_policy)
         add_executable(${test} tests/${test}.cpp)
         target_link_libraries(${test} PRIVATE twocrypto::pool)
+        if(test STREQUAL "test_parity_config")
+            target_link_libraries(${test} PRIVATE Boost::json)
+        endif()
         pool_private_defaults(${test})
         add_test(NAME ${test} COMMAND ${test})
     endforeach()

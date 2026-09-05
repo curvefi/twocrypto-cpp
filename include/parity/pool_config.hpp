@@ -3,6 +3,7 @@
 
 #include <array>
 #include <cstdint>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -53,6 +54,7 @@ struct HistoricalState {
 
 struct PoolConfig {
     std::string name;
+    // Multipliers from raw token units to the pool's 1e18 precision, in [1, 1e18].
     std::array<uint256, 2> precisions{PoolTraits<uint256>::ONE(), PoolTraits<uint256>::ONE()};
     uint256 A{uint256(0)};
     uint256 gamma{uint256(0)};
@@ -123,6 +125,29 @@ inline void require_scalar(const json::value& value, const char* context) {
 uint256 parse_config_plain(const json::value& value) {
     require_scalar(value, "pool config value");
     return uint256(scalar_to_string(value));
+}
+
+uint256 parse_config_precision(const json::value& value) {
+    require_scalar(value, "pool precision");
+    const std::string raw = scalar_to_string(value);
+    for (const char c : raw) {
+        if (c < '0' || c > '9') {
+            throw std::runtime_error("pool precisions must be integers in [1, 1e18]");
+        }
+    }
+    const std::size_t first_digit = raw.find_first_not_of('0');
+    constexpr std::string_view max_precision = "1000000000000000000";
+    if (first_digit == std::string::npos) {
+        throw std::runtime_error("pool precisions must be integers in [1, 1e18]");
+    }
+    const std::string_view normalized(raw.data() + first_digit, raw.size() - first_digit);
+    if (normalized.size() > max_precision.size() ||
+        (normalized.size() == max_precision.size() && normalized > max_precision)) {
+        throw std::runtime_error("pool precisions must be integers in [1, 1e18]");
+    }
+    uint256 precision = 0;
+    for (const char c : normalized) precision = precision * 10 + uint256(c - '0');
+    return precision;
 }
 
 uint256 parse_config_wad(const json::value& value) {
@@ -274,6 +299,17 @@ PoolConfig parse_pool_config(const json::object& object) {
     config.out_fee = parse_fee("out_fee");
     config.fee_gamma = parse_wad("fee_gamma");
 
+    if (const auto* value = object.if_contains("precisions")) {
+        if (!value->is_array() || value->as_array().size() != 2) {
+            throw std::runtime_error("pool precisions must have exactly two entries");
+        }
+        const auto& values = value->as_array();
+        config.precisions = {
+            parse_config_precision(values[0]),
+            parse_config_precision(values[1]),
+        };
+    }
+
     if (object.if_contains("allowed_extra_profit") ||
         object.if_contains("adjustment_step") || object.if_contains("lp_profit_fraction") ||
         object.if_contains("fee_params") || object.if_contains("fee_model_name")) {
@@ -300,7 +336,7 @@ PoolConfig parse_pool_config(const json::object& object) {
         throw std::runtime_error("missing/invalid initial_liquidity");
     }
     const auto& values = liquidity->as_array();
-    if (values.size() < 2 || !values[0].is_string() || !values[1].is_string()) {
+    if (values.size() != 2 || !values[0].is_string() || !values[1].is_string()) {
         throw std::runtime_error("initial_liquidity must be [str,str]");
     }
     config.initial_liquidity = {
@@ -324,7 +360,7 @@ PoolConfig parse_pool_config(const json::object& object) {
 
     for (const auto& entry : object) {
         const std::string_view key(entry.key().data(), entry.key().size());
-        if (key == "name" || key == "A" || key == "gamma" || key == "mid_fee" ||
+        if (key == "name" || key == "precisions" || key == "A" || key == "gamma" || key == "mid_fee" ||
             key == "out_fee" || key == "fee_gamma" || key == "adjustment_step_min" ||
             key == "adjustment_step_max" || key == "ma_time" ||
             key == "reserved_profit_fraction" || key == "admin_fee" || key == "policy" ||
@@ -411,8 +447,19 @@ TwoCryptoPool<uint256> make_pool(const PoolConfig& config, const ActionSequence&
 inline int64_t required_i64(const json::object& object, const char* key) {
     const auto& value = required_value(object, key);
     if (value.is_int64()) return value.as_int64();
-    if (value.is_uint64()) return static_cast<int64_t>(value.as_uint64());
+    if (value.is_uint64() &&
+        value.as_uint64() <= static_cast<uint64_t>(std::numeric_limits<int64_t>::max())) {
+        return static_cast<int64_t>(value.as_uint64());
+    }
     throw std::runtime_error(std::string("expected integer for key: ") + key);
+}
+
+inline int64_t required_nonnegative_i64(const json::object& object, const char* key) {
+    const int64_t value = required_i64(object, key);
+    if (value < 0) {
+        throw std::runtime_error(std::string("expected nonnegative integer for key: ") + key);
+    }
+    return value;
 }
 
 inline std::array<std::string, 2> required_string_pair(
@@ -420,7 +467,7 @@ inline std::array<std::string, 2> required_string_pair(
     const char* key
 ) {
     const auto& value = required_value(object, key);
-    if (!value.is_array() || value.as_array().size() < 2 ||
+    if (!value.is_array() || value.as_array().size() != 2 ||
         !value.as_array()[0].is_string() || !value.as_array()[1].is_string()) {
         throw std::runtime_error(std::string(key) + " must be [str,str]");
     }
@@ -499,11 +546,18 @@ inline Action parse_action(const json::value& value) {
                 action.n_iter = required_i64(object, "n_iter");
             }
         } else if (action.type == "time_travel") {
-            if (object.if_contains("seconds")) {
-                action.seconds = required_i64(object, "seconds");
+            const bool has_seconds = object.if_contains("seconds") != nullptr;
+            const bool has_timestamp = object.if_contains("timestamp") != nullptr;
+            if (has_seconds == has_timestamp) {
+                throw std::runtime_error(
+                    "time_travel requires exactly one of seconds or timestamp"
+                );
+            }
+            if (has_seconds) {
+                action.seconds = required_nonnegative_i64(object, "seconds");
                 action.has_seconds = true;
-            } else if (object.if_contains("timestamp")) {
-                action.timestamp = required_i64(object, "timestamp");
+            } else {
+                action.timestamp = required_nonnegative_i64(object, "timestamp");
                 action.has_timestamp = true;
             }
         }

@@ -547,7 +547,12 @@ public:
     void tick() {
         auto A_gamma = std::array<T, 2>{ A, gamma };
         const auto xp = _xp(balances, cached_price_scale);
-        cached_price_scale = tweak_price(A_gamma, xp, D, virtual_price);
+        // No tokens move: use live pre-operation accounting, as liquidity and
+        // exchange paths do. The cached float may differ by an ULP after a tweak.
+        const T vp_preop = totalSupply > Traits::ZERO()
+            ? Traits::PRECISION() * _xcp(D, cached_price_scale) / totalSupply
+            : Traits::PRECISION();
+        cached_price_scale = tweak_price(A_gamma, xp, D, vp_preop);
     }
 
     // Native contract-side oracle projected to `now` without mutating its
@@ -772,6 +777,10 @@ private:
                         relative_lp_add * donation_protection_period
                     ) + donation_protection_extension_remainder;
                     T extension_seconds = raw_extension / donation_protection_lp_threshold;
+                    if constexpr (std::is_floating_point_v<T>) {
+                        // Grant whole seconds; fractional credit stays in the remainder.
+                        extension_seconds = std::floor(extension_seconds);
+                    }
 
                     T current_expiry = (
                         donation_protection_expiry_ts > T(block_timestamp)

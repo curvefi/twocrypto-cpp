@@ -1,4 +1,5 @@
 #include <array>
+#include <cmath>
 #include <stdexcept>
 
 #include "pools/twocrypto_fx/twocrypto.hpp"
@@ -113,6 +114,46 @@ void test_fixed_out_cannot_burn_pool_owned_lp() {
     require(same_pool_state(pool, before), "ownership rejection leaked pool state");
 }
 
+void test_donation_protection_conserves_subsecond_credit() {
+    Pool pool = make_pool(fx::PolicyKind::None);
+    constexpr uint64_t now = 1'700'000'000;
+    pool.set_block_timestamp(now);
+    pool.add_liquidity({1'000'000.0, 1'000'000.0}, 0.0);
+    pool.add_liquidity({50'000.0, 50'000.0}, 0.0, true);
+    require(pool.donation_shares > 0.0, "donation seed has no protected shares");
+
+    const double threshold = pool.donation_protection_lp_threshold;
+    double accumulated_credit = 0.0;
+    for (int i = 0; i < 8; ++i) {
+        const double old_supply = pool.totalSupply;
+        const double minted = pool.add_liquidity({100.0, 100.0}, 0.0);
+        // Vyper grants the integer quotient and carries the remainder of
+        // this LP-weighted credit; neither part may be spent twice.
+        accumulated_credit += minted / (old_supply + minted)
+            * pool.donation_protection_period;
+        const double granted = pool.donation_protection_expiry_ts - now;
+        require(granted == std::floor(granted), "granted fractional protection twice");
+        require(pool.donation_protection_extension_remainder >= 0.0 &&
+            pool.donation_protection_extension_remainder < threshold,
+            "protection remainder outside one-second credit");
+        require(std::abs(accumulated_credit - granted * threshold -
+            pool.donation_protection_extension_remainder) < 1e-12,
+            "granted protection and remainder do not conserve credit");
+        if (i == 0) require(granted == 0.0, "first subsecond add granted protection");
+    }
+    require(pool.donation_protection_expiry_ts == now + 2,
+        "subsecond adds did not accumulate into two whole seconds");
+    const double existing_expiry = pool.donation_protection_expiry_ts;
+    pool.add_liquidity({0.01, 0.01}, 0.0);
+    require(pool.donation_protection_expiry_ts == existing_expiry,
+        "zero-second grant changed existing protection");
+    pool.add_liquidity({1'000'000.0, 1'000'000.0}, 0.0);
+    require(pool.donation_protection_expiry_ts == now + pool.donation_protection_period,
+        "large add did not cap protection at the configured period");
+    require(pool.donation_protection_extension_remainder == 0.0,
+        "capped protection retained fractional credit");
+}
+
 } // namespace
 
 int main() {
@@ -120,5 +161,6 @@ int main() {
     test_compiled_policy_rollback();
 #endif
     test_fixed_out_cannot_burn_pool_owned_lp();
+    test_donation_protection_conserves_subsecond_credit();
     return 0;
 }

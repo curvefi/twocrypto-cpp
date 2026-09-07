@@ -52,9 +52,27 @@ void test_long_double_ema_precision() {
     }
 }
 
+void test_tick_uses_live_preoperation_virtual_price() {
+    fx::TwoCryptoPool<double> pool(
+        {1.,1.},400000.,.000145,.0026,.0045,.00023,.000001,.1,866.,1.);
+    pool.set_block_timestamp(100);
+    pool.add_liquidity({10000.,10000.},0.);
+    const double live_vp=pool.D/2/std::sqrt(pool.cached_price_scale)/pool.totalSupply;
+    // A cached value one binary64 ULP above live accounting occurs in the July
+    // historical replay. A no-transfer call must compare live pre/post values.
+    pool.virtual_price=std::nextafter(live_vp,std::numeric_limits<double>::infinity());
+    const auto balances=pool.balances; const double supply=pool.totalSupply;
+    pool.set_block_timestamp(101); pool.tick();
+    require(pool.balances==balances && pool.totalSupply==supply,
+        "tick transferred funds or changed LP supply");
+    require(pool.virtual_price==live_vp && pool.last_timestamp==101,
+        "tick failed to update against live pre-operation accounting");
+}
+
 } // namespace
 
 int main() {
     test_long_double_ema_precision();
+    test_tick_uses_live_preoperation_virtual_price();
     return 0;
 }

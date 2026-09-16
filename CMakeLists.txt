@@ -112,6 +112,7 @@ install(DIRECTORY include/pools/twocrypto_fx/
     PATTERN "yieldbasis.hpp" EXCLUDE
     PATTERN "price_feed.hpp" EXCLUDE
     PATTERN "fair_price_fee.hpp" EXCLUDE
+    PATTERN "reporting_fair_fee.hpp" EXCLUDE
     PATTERN "implied_fair_fee.hpp" EXCLUDE
     PATTERN "revealed_fair_fee.hpp" EXCLUDE)
 install(TARGETS twocrypto_pool EXPORT twocrypto_poolTargets)

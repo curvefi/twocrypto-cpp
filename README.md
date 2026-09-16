@@ -65,6 +65,14 @@ protection, rollback, and actuator authority. Without a selected header,
 `compiled` is unavailable; use `PolicyKind::None` for the native pool.
 A compiled policy supplies `validate_params(params, pool_config)`, called once
 at pool initialization; its quote hooks retain state-dependent checks.
+Policies may optionally supply
+`context_fee_floor(state, params, pool_config, research, input_coin)`.
+It must be a conservative lower bound over **every admissible swap size** in
+that direction, for the current fixed state and report context. A spot fee
+does not satisfy this contract when fees can decrease with size. Policies
+without this hook keep their existing global `fee_floor`. The harness uses
+the context bound for early rejection only, preserving the generic sizing
+ladder and refinement for admitted opportunities.
 Concrete policy selection is intentionally owned by that executable, not by
 the installed pool package. The pool checkout exposes
 `TWOCRYPTO_PARITY_POLICY_PATH` only for private parity test/benchmark targets;

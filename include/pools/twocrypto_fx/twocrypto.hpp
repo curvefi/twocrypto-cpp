@@ -314,6 +314,11 @@ public:
         return _clamp_fee(policy.fee_floor(native_floor));
     }
 
+    T context_fee_lower_bound(size_t input_coin) const {
+        if (input_coin > 1) throw std::invalid_argument("fee bound input coin");
+        return _clamp_fee(policy.context_fee_floor(Traits::min(mid_fee, out_fee), input_coin));
+    }
+
 private:
     T _clamp_fee(const T& fee) const {
         const T min_fee = Traits::NOISE_FEE();
@@ -1478,6 +1483,15 @@ public:
         if (policy.kind != PolicyKind::None) {
             policy.prepare_price_scale_call(block_timestamp, cached_price_oracle);
         }
+    }
+
+    void clear_policy_price_feed() {
+        policy.research.price_feed = Traits::ZERO();
+        policy.research.price_feed_timestamp = 0;
+    }
+
+    bool uses_swap_reports() const noexcept {
+        return policy.kind == PolicyKind::Compiled && compiled_detail::uses_swap_reports_v<T>;
     }
 
     void refresh_policy_context(

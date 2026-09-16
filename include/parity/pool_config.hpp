@@ -2,6 +2,7 @@
 #pragma once
 
 #include <array>
+#include <charconv>
 #include <cstdint>
 #include <limits>
 #include <stdexcept>
@@ -130,24 +131,13 @@ uint256 parse_config_plain(const json::value& value) {
 uint256 parse_config_precision(const json::value& value) {
     require_scalar(value, "pool precision");
     const std::string raw = scalar_to_string(value);
-    for (const char c : raw) {
-        if (c < '0' || c > '9') {
-            throw std::runtime_error("pool precisions must be integers in [1, 1e18]");
-        }
-    }
-    const std::size_t first_digit = raw.find_first_not_of('0');
-    constexpr std::string_view max_precision = "1000000000000000000";
-    if (first_digit == std::string::npos) {
+    uint64_t precision = 0;
+    const auto [end, error] = std::from_chars(raw.data(), raw.data() + raw.size(), precision);
+    if (error != std::errc{} || end != raw.data() + raw.size() ||
+        precision == 0 || precision > 1'000'000'000'000'000'000ULL) {
         throw std::runtime_error("pool precisions must be integers in [1, 1e18]");
     }
-    const std::string_view normalized(raw.data() + first_digit, raw.size() - first_digit);
-    if (normalized.size() > max_precision.size() ||
-        (normalized.size() == max_precision.size() && normalized > max_precision)) {
-        throw std::runtime_error("pool precisions must be integers in [1, 1e18]");
-    }
-    uint256 precision = 0;
-    for (const char c : normalized) precision = precision * 10 + uint256(c - '0');
-    return precision;
+    return uint256(precision);
 }
 
 uint256 parse_config_wad(const json::value& value) {

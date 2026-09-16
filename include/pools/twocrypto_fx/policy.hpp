@@ -150,6 +150,21 @@ public:
         throw std::logic_error("unsupported policy kind in fee floor");
     }
 
+    // Optional policy hook: bound every size in this input direction while
+    // the current pool state and report context remain fixed. Older policies
+    // retain their global bound; a spot fee is not a valid substitute.
+    T context_fee_floor(const T& native_floor, [[maybe_unused]] size_t input_coin) const {
+#ifdef TWOCRYPTO_POLICY_HEADER
+        if constexpr (compiled_detail::HasContextFeeFloor<ChallengeFeePolicy<T>, T>::value) {
+            if (kind == PolicyKind::Compiled) {
+                return ChallengeFeePolicy<T>::context_fee_floor(
+                    compiled_state, params, config, research, input_coin);
+            }
+        }
+#endif
+        return fee_floor(native_floor);
+    }
+
     T get_fee([[maybe_unused]] const std::array<T, 2>& xp) const {
         switch (kind) {
         case PolicyKind::None:

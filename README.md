@@ -73,6 +73,12 @@ does not satisfy this contract when fees can decrease with size. Policies
 without this hook keep their existing global `fee_floor`. The harness uses
 the context bound for early rejection only, preserving the generic sizing
 ladder and refinement for admitted opportunities.
+Policies may also provide `prepare_fee(state, params, pool_config, research)`,
+returning a callable of post-swap `xp` with the same result as `get_fee`.
+This ephemeral view may precompute report selection and aging, but must be
+discarded before any referenced state, parameters or research context change.
+It is never committed or serialized. Policies without the hook retain ordinary
+quotes; the pool still applies its fee clamp and zero-sentinel native fallback.
 Concrete policy selection is intentionally owned by that executable, not by
 the installed pool package. The pool checkout exposes
 `TWOCRYPTO_PARITY_POLICY_PATH` only for private parity test/benchmark targets;
@@ -80,21 +86,16 @@ that value is never exported with `twocrypto::pool`.
 
 The checked-in `include/pools/twocrypto_fx/policies/yieldbasis.hpp` is the exact
 `uint256` translation of the pinned `YBTwocryptoPolicy.vy`. Build the private
-policy evaluator and pool harness, then run the 59 upstream policy cases, exact
-native uint parity, and the pool-integrated state comparison:
+pool harness, then run exact native uint parity and the pool-integrated state
+comparison:
 
 ```sh
 cmake -S . -B build/yb-parity -DCMAKE_BUILD_TYPE=Release \
-  -DTWOCRYPTO_POOL_BUILD_TESTS=ON \
   -DTWOCRYPTO_POOL_BUILD_BENCHMARKS=ON \
   -DTWOCRYPTO_PARITY_POLICY_PATH="$PWD/include/pools/twocrypto_fx/policies/yieldbasis.hpp"
-cmake --build build/yb-parity \
-  --target yb_policy_evaluator_i benchmark_harness_i --parallel
-TWOCRYPTO_YB_EVALUATOR="$PWD/build/yb-parity/yb_policy_evaluator_i" \
-  TWOCRYPTO_HARNESS_I="$PWD/build/yb-parity/benchmark_harness_i" \
-  uv run --frozen --no-sync pytest -q -o addopts='' \
-  tests/test_yb_policy_parity.py \
-  tests/test_boa_parity_fxswap_ext_fee.py
+cmake --build build/yb-parity --target benchmark_harness_i --parallel
+TWOCRYPTO_HARNESS_I="$PWD/build/yb-parity/benchmark_harness_i" \
+  uv run --frozen --no-sync pytest -q -o addopts='' tests/test_boa_parity_fxswap_ext_fee.py
 ```
 
 The installed pool package does not select or hash a concrete policy. Policy

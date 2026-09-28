@@ -2,6 +2,7 @@
 #pragma once
 
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <optional>
 #include <stdexcept>
@@ -15,6 +16,12 @@ namespace twocrypto_fx {
 template <typename T>
 class PolicyModel {
 public:
+#ifdef TWOCRYPTO_POLICY_HEADER
+    static constexpr bool HAS_SWAP_COMMIT =
+        compiled_detail::HasSwapCommit<ChallengeFeePolicy<T>, T>::value;
+#else
+    static constexpr bool HAS_SWAP_COMMIT = false;
+#endif
     PolicyKind kind = PolicyKind::None;
     PolicyConfig<T> params{};
     PolicyPoolConfig<T> config{};
@@ -33,6 +40,38 @@ public:
     };
 
     PolicyModel() = default;
+
+    T get_liquidity_fee(const std::array<T,2>& xp, const T& live_D) const {
+#ifdef TWOCRYPTO_POLICY_HEADER
+        if constexpr (compiled_detail::HasLiquidityFee<ChallengeFeePolicy<T>, T>::value) {
+            if (kind == PolicyKind::Compiled)
+                return ChallengeFeePolicy<T>::get_liquidity_fee(
+                    compiled_state, params, config, research, xp, live_D);
+        }
+#endif
+        return get_fee(xp, live_D);
+    }
+
+    auto prepare_swap_commit(const std::array<T,2>& pre_fee_xp, const T& live_D,
+                             std::size_t input_coin, const T& charged_fee_rate) {
+#ifdef TWOCRYPTO_POLICY_HEADER
+        if constexpr (HAS_SWAP_COMMIT) {
+            using Policy = ChallengeFeePolicy<T>;
+            typename Policy::SwapEvidence evidence{};
+            if (kind == PolicyKind::Compiled)
+                evidence = Policy::inspect_swap(compiled_state, params, config, research,
+                    pre_fee_xp, live_D, input_coin, charged_fee_rate);
+            const uint64_t timestamp = research.block_timestamp;
+            return [this, evidence, timestamp]() {
+                if (kind == PolicyKind::Compiled)
+                    Policy::commit_swap(compiled_state, params, config, timestamp, evidence);
+            };
+        } else
+#endif
+        {
+            return []() {};
+        }
+    }
 
     explicit PolicyModel(PolicyKind policy_kind) : kind(policy_kind) {
         params.kind = policy_kind;
@@ -119,9 +158,12 @@ public:
         research.price_oracle = price_oracle;
     }
 
-    void set_price_feed(const T& price, uint64_t timestamp) {
+    void set_price_feed(const T& price, double timestamp) {
         if (!(price > T(0))) {
             throw std::invalid_argument("policy price feed must be positive");
+        }
+        if (!std::isfinite(timestamp) || timestamp < 0) {
+            throw std::invalid_argument("policy price feed timestamp must be finite and nonnegative");
         }
         if (timestamp > research.block_timestamp) {
             throw std::invalid_argument("policy price feed is from the future");
@@ -153,32 +195,88 @@ public:
     // Optional policy hook: bound every size in this input direction while
     // the current pool state and report context remain fixed. Older policies
     // retain their global bound; a spot fee is not a valid substitute.
-    T context_fee_floor(const T& native_floor, [[maybe_unused]] size_t input_coin) const {
+    T context_fee_floor(const T& native_floor, size_t input_coin) const {
+        return context_fee_floor(research, native_floor, input_coin);
+    }
+
+    // Explicit-context form: lets an event cursor bound a hypothetical report
+    // without changing the live research context.
+    T context_fee_floor(
+        [[maybe_unused]] const PolicyResearchContext<T>& context,
+        const T& native_floor, [[maybe_unused]] size_t input_coin
+    ) const {
 #ifdef TWOCRYPTO_POLICY_HEADER
         if constexpr (compiled_detail::HasContextFeeFloor<ChallengeFeePolicy<T>, T>::value) {
             if (kind == PolicyKind::Compiled) {
                 return ChallengeFeePolicy<T>::context_fee_floor(
-                    compiled_state, params, config, research, input_coin);
+                    compiled_state, params, config, context, input_coin);
             }
         }
 #endif
         return fee_floor(native_floor);
     }
 
-    T get_fee([[maybe_unused]] const std::array<T, 2>& xp) const {
+    // Optional policy hook: false only when no swap from input_coin can profit
+    // against `external` (net of external fees) in this context. Policies
+    // without the hook never reject, so callers keep sizing every opportunity.
+    bool context_may_profit(
+        [[maybe_unused]] const PolicyResearchContext<T>& context,
+        [[maybe_unused]] size_t input_coin,
+        [[maybe_unused]] const T& spot, [[maybe_unused]] const T& external
+    ) const {
+#ifdef TWOCRYPTO_POLICY_HEADER
+        if constexpr (compiled_detail::HasContextMayProfit<ChallengeFeePolicy<T>, T>::value) {
+            if (kind == PolicyKind::Compiled) {
+                return ChallengeFeePolicy<T>::context_may_profit(
+                    compiled_state, params, config, context, input_coin, spot, external);
+            }
+        }
+#endif
+        return true;
+    }
+
+    T get_fee([[maybe_unused]] const std::array<T, 2>& xp,
+              [[maybe_unused]] const T& live_pool_D = T(0)) const {
         switch (kind) {
         case PolicyKind::None:
             return T(0);
         case PolicyKind::Compiled:
 #ifdef TWOCRYPTO_POLICY_HEADER
-            return ChallengeFeePolicy<T>::get_fee(
-                compiled_state, params, config, research, xp
-            );
+            if constexpr (compiled_detail::HasLivePoolFee<ChallengeFeePolicy<T>, T>::value) {
+                return ChallengeFeePolicy<T>::get_fee(
+                    compiled_state, params, config, research, xp, live_pool_D
+                );
+            } else {
+                return ChallengeFeePolicy<T>::get_fee(
+                    compiled_state, params, config, research, xp
+                );
+            }
 #else
             break;
 #endif
         }
         throw std::logic_error("unsupported policy kind in fee hook");
+    }
+
+    // The caller must discard this view before changing policy state/context.
+    auto prepare_fee([[maybe_unused]] const T& live_pool_D = T(0)) const {
+#ifdef TWOCRYPTO_POLICY_HEADER
+        if constexpr (compiled_detail::HasPreparedLivePoolFee<ChallengeFeePolicy<T>, T>::value) {
+            auto prepared = ChallengeFeePolicy<T>::prepare_fee(
+                compiled_state, params, config, research, live_pool_D);
+            return [this, prepared, live_pool_D](const std::array<T, 2>& xp) {
+                return kind == PolicyKind::Compiled ? prepared(xp) : get_fee(xp, live_pool_D);
+            };
+        } else if constexpr (compiled_detail::HasPreparedFee<ChallengeFeePolicy<T>, T>::value) {
+            auto prepared = ChallengeFeePolicy<T>::prepare_fee(compiled_state, params, config, research);
+            return [this, prepared, live_pool_D](const std::array<T, 2>& xp) {
+                return kind == PolicyKind::Compiled ? prepared(xp) : get_fee(xp, live_pool_D);
+            };
+        } else
+#endif
+        {
+            return [this, live_pool_D](const std::array<T, 2>& xp) { return get_fee(xp, live_pool_D); };
+        }
     }
 
     T get_price_scale() {

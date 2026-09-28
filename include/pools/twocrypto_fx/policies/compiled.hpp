@@ -27,6 +27,56 @@ namespace twocrypto_fx {
 namespace compiled_detail {
 
 #ifdef TWOCRYPTO_POLICY_HEADER
+// Opt-in research callback: inspect the exact pre-fee swap while the policy
+// still holds pre-trade state, then commit only after successful execution.
+template <typename Policy, typename T, typename = void>
+struct HasSwapCommit : std::false_type {};
+template <typename Policy, typename T>
+struct HasSwapCommit<Policy, T, std::void_t<
+    typename Policy::SwapEvidence,
+    decltype(Policy::inspect_swap(std::declval<const typename Policy::State&>(),
+        std::declval<const PolicyConfig<T>&>(), std::declval<const PolicyPoolConfig<T>&>(),
+        std::declval<const PolicyResearchContext<T>&>(), std::declval<const std::array<T,2>&>(),
+        std::declval<const T&>(), std::size_t{}, std::declval<const T&>())),
+    decltype(Policy::commit_swap(std::declval<typename Policy::State&>(),
+        std::declval<const PolicyConfig<T>&>(), std::declval<const PolicyPoolConfig<T>&>(),
+        uint64_t{}, std::declval<const typename Policy::SwapEvidence&>()))>> : std::true_type {};
+
+template <typename Policy, typename T, typename = void>
+struct HasLiquidityFee : std::false_type {};
+template <typename Policy, typename T>
+struct HasLiquidityFee<Policy, T, std::void_t<decltype(Policy::get_liquidity_fee(
+    std::declval<const typename Policy::State&>(), std::declval<const PolicyConfig<T>&>(),
+    std::declval<const PolicyPoolConfig<T>&>(), std::declval<const PolicyResearchContext<T>&>(),
+    std::declval<const std::array<T,2>&>(), std::declval<const T&>()))>> : std::true_type {};
+
+template <typename Policy, typename T, typename = void>
+struct HasPreparedFee : std::false_type {};
+
+template <typename Policy, typename T>
+struct HasPreparedFee<Policy, T, std::void_t<decltype(Policy::prepare_fee(
+    std::declval<const typename Policy::State&>(), std::declval<const PolicyConfig<T>&>(),
+    std::declval<const PolicyPoolConfig<T>&>(), std::declval<const PolicyResearchContext<T>&>()))>>
+    : std::true_type {};
+
+template <typename Policy, typename T, typename = void>
+struct HasLivePoolFee : std::false_type {};
+
+template <typename Policy, typename T>
+struct HasLivePoolFee<Policy, T, std::void_t<decltype(Policy::get_fee(
+    std::declval<const typename Policy::State&>(), std::declval<const PolicyConfig<T>&>(),
+    std::declval<const PolicyPoolConfig<T>&>(), std::declval<const PolicyResearchContext<T>&>(),
+    std::declval<const std::array<T, 2>&>(), std::declval<const T&>()))>> : std::true_type {};
+
+template <typename Policy, typename T, typename = void>
+struct HasPreparedLivePoolFee : std::false_type {};
+
+template <typename Policy, typename T>
+struct HasPreparedLivePoolFee<Policy, T, std::void_t<decltype(Policy::prepare_fee(
+    std::declval<const typename Policy::State&>(), std::declval<const PolicyConfig<T>&>(),
+    std::declval<const PolicyPoolConfig<T>&>(), std::declval<const PolicyResearchContext<T>&>(),
+    std::declval<const T&>()))>> : std::true_type {};
+
 template <typename Policy, typename T, typename = void>
 struct HasContextFeeFloor : std::false_type {};
 
@@ -36,6 +86,17 @@ struct HasContextFeeFloor<Policy, T, std::void_t<decltype(Policy::context_fee_fl
     std::declval<const PolicyConfig<T>&>(),
     std::declval<const PolicyPoolConfig<T>&>(),
     std::declval<const PolicyResearchContext<T>&>(), std::size_t{}))>> : std::true_type {};
+
+template <typename Policy, typename T, typename = void>
+struct HasContextMayProfit : std::false_type {};
+
+template <typename Policy, typename T>
+struct HasContextMayProfit<Policy, T, std::void_t<decltype(Policy::context_may_profit(
+    std::declval<const typename Policy::State&>(),
+    std::declval<const PolicyConfig<T>&>(),
+    std::declval<const PolicyPoolConfig<T>&>(),
+    std::declval<const PolicyResearchContext<T>&>(), std::size_t{},
+    std::declval<T>(), std::declval<T>()))>> : std::true_type {};
 
 template <typename Policy, typename = void>
 struct UsesNativeFee : std::false_type {};
@@ -58,11 +119,22 @@ struct UsesSwapReports<Policy, std::void_t<decltype(Policy::USES_SWAP_REPORTS)>>
 
 template <typename T>
 inline constexpr bool uses_swap_reports_v = UsesSwapReports<ChallengeFeePolicy<T>>::value;
+template <typename Policy, typename = void>
+struct UsesCachedReports : std::false_type {};
+
+template <typename Policy>
+struct UsesCachedReports<Policy, std::void_t<decltype(Policy::USES_CACHED_REPORTS)>>
+    : std::bool_constant<Policy::USES_CACHED_REPORTS> {};
+
+template <typename T>
+inline constexpr bool uses_cached_reports_v = UsesCachedReports<ChallengeFeePolicy<T>>::value;
 #else
 template <typename T>
 inline constexpr bool uses_native_fee_v = false;
 template <typename T>
 inline constexpr bool uses_swap_reports_v = false;
+template <typename T>
+inline constexpr bool uses_cached_reports_v = false;
 #endif
 
 } // namespace compiled_detail

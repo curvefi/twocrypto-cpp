@@ -71,7 +71,8 @@ struct PolicyResearchContext {
     // policies can consume any causal model/oracle/market feed without changing pool
     // accounting semantics.
     T price_feed{T(0)};
-    uint64_t price_feed_timestamp{0};
+    double price_feed_timestamp{0}; // Unix seconds; reports may have subsecond timestamps.
+    double report_max_age_s{0};
 };
 
 template <typename T>

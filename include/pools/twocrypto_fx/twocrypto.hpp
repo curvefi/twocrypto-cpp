@@ -302,6 +302,14 @@ public:
         return _fee(xp);
     }
 
+    auto prepare_fee() const {
+        auto quote = policy.prepare_fee(D);
+        return [this, quote](const std::array<T, 2>& xp) {
+            const T value = quote(xp);
+            return _clamp_fee(value != Traits::ZERO() ? value : _native_fee(xp));
+        };
+    }
+
     // Lower bound on the fee any trade can currently pay (any size, any
     // direction). Used by the arb sizing gate so fee structures that get
     // cheaper with size are not pre-filtered out. Errs low: never above
@@ -315,8 +323,26 @@ public:
     }
 
     T context_fee_lower_bound(size_t input_coin) const {
+        return context_fee_lower_bound(policy.research, input_coin);
+    }
+
+    T context_fee_lower_bound(const PolicyResearchContext<T>& context, size_t input_coin) const {
         if (input_coin > 1) throw std::invalid_argument("fee bound input coin");
-        return _clamp_fee(policy.context_fee_floor(Traits::min(mid_fee, out_fee), input_coin));
+        return _clamp_fee(policy.context_fee_floor(context, Traits::min(mid_fee, out_fee), input_coin));
+    }
+
+    // False only when the policy proves no swap from input_coin is profitable
+    // against `external`, the best external price net of external fees.
+    bool context_may_profit(size_t input_coin, const T& spot, const T& external) const {
+        return context_may_profit(policy.research, input_coin, spot, external);
+    }
+
+    bool context_may_profit(
+        const PolicyResearchContext<T>& context, size_t input_coin,
+        const T& spot, const T& external
+    ) const {
+        if (input_coin > 1) throw std::invalid_argument("profit bound input coin");
+        return policy.context_may_profit(context, input_coin, spot, external);
     }
 
 private:
@@ -370,9 +396,10 @@ private:
     // A nonzero policy fee is the final answer, so avoid computing the native
     // fallback unless the policy explicitly returns zero. This changes neither
     // operation order nor arithmetic on either returned branch.
-    T _fee(const std::array<T, 2>& xp) const {
+    T _fee(const std::array<T, 2>& xp, bool liquidity_operation = false) const {
         if (policy.kind != PolicyKind::None) {
-            const T policy_fee = policy.get_fee(xp);
+            const T policy_fee = liquidity_operation
+                ? policy.get_liquidity_fee(xp, D) : policy.get_fee(xp, D);
             if (policy_fee != Traits::ZERO()) {
                 return _clamp_fee(policy_fee);
             }
@@ -514,7 +541,7 @@ private:
             amounts[1] * precisions[1] * balances_ratio / Traits::PRECISION()
         };
 
-        T fee_prime = _fee(xp) * N_COINS / (4 * (N_COINS - 1));
+        T fee_prime = _fee(xp, true) * N_COINS / (4 * (N_COINS - 1));
 
         T S = amounts_scaled[0] + amounts_scaled[1];
         if (S == Traits::ZERO()) {
@@ -1133,7 +1160,9 @@ public:
         }
         dy = dy / precisions[idx_j];
 
-        T fee = _fee(xp) * dy / PoolTraits<T>::FEE_PRECISION();
+        const T fee_rate = _fee(xp);
+        auto commit_policy_swap = policy.prepare_swap_commit(xp, D, idx_i, fee_rate);
+        T fee = fee_rate * dy / PoolTraits<T>::FEE_PRECISION();
         dy -= fee;
         if (dy < min_dy) {
             throw std::runtime_error("slippage");
@@ -1155,6 +1184,7 @@ public:
             D = D_new;
         }
         T new_price_scale = tweak_price(A_gamma, xp_new, D_new, vp_preop);
+        commit_policy_swap();
         return { dy, fee, new_price_scale };
         });
     }
@@ -1178,6 +1208,20 @@ public:
 
         auto A_gamma = std::array<T, 2>{ A, gamma };
 
+        std::array<T,2> pre_fee_xp{};
+        T fee_rate{};
+        if constexpr (PolicyModel<T>::HAS_SWAP_COMMIT) {
+            // Recreate the exact pure quote used by the winning preview, before
+            // balances/D/cache change. Never infer its edge from post-fee xp.
+            pre_fee_xp = _xp({balances[0] + (idx_i == 0 ? dx : Traits::ZERO()),
+                              balances[1] + (idx_i == 1 ? dx : Traits::ZERO())}, price_scale);
+            const T y = Ops::get_y_unchecked(A, gamma, pre_fee_xp, D, idx_j);
+            const T gross_xp = pre_fee_xp[idx_j] - y;
+            pre_fee_xp[idx_j] -= gross_xp;
+            fee_rate = _fee(pre_fee_xp);
+        }
+        auto commit_policy_swap = policy.prepare_swap_commit(pre_fee_xp, D, idx_i, fee_rate);
+
         balances[idx_i] += dx;
         balances[idx_j] -= dy_after_fee;
         auto xp_new = _xp(balances, price_scale);
@@ -1194,6 +1238,7 @@ public:
             D = D_new;
         }
         T new_price_scale = tweak_price(A_gamma, xp_new, D_new, vp_preop);
+        commit_policy_swap();
         return { dy_after_fee, fee, new_price_scale };
         });
     }
@@ -1494,9 +1539,13 @@ public:
         return policy.kind == PolicyKind::Compiled && compiled_detail::uses_swap_reports_v<T>;
     }
 
+    bool uses_cached_reports() const noexcept {
+        return policy.kind == PolicyKind::Compiled && compiled_detail::uses_cached_reports_v<T>;
+    }
+
     void refresh_policy_context(
         const T& price_feed,
-        uint64_t price_feed_timestamp
+        double price_feed_timestamp
     ) {
         if (policy.kind != PolicyKind::None) {
             policy.prepare_price_scale_call(block_timestamp, cached_price_oracle);

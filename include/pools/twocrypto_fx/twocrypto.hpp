@@ -302,6 +302,14 @@ public:
         return _fee(xp);
     }
 
+    auto prepare_fee() const {
+        auto quote = policy.prepare_fee(D);
+        return [this, quote](const std::array<T, 2>& xp) {
+            const T value = quote(xp);
+            return _clamp_fee(value != Traits::ZERO() ? value : _native_fee(xp));
+        };
+    }
+
     // Lower bound on the fee any trade can currently pay (any size, any
     // direction). Used by the arb sizing gate so fee structures that get
     // cheaper with size are not pre-filtered out. Errs low: never above
@@ -315,8 +323,26 @@ public:
     }
 
     T context_fee_lower_bound(size_t input_coin) const {
+        return context_fee_lower_bound(policy.research, input_coin);
+    }
+
+    T context_fee_lower_bound(const PolicyResearchContext<T>& context, size_t input_coin) const {
         if (input_coin > 1) throw std::invalid_argument("fee bound input coin");
-        return _clamp_fee(policy.context_fee_floor(Traits::min(mid_fee, out_fee), input_coin));
+        return _clamp_fee(policy.context_fee_floor(context, Traits::min(mid_fee, out_fee), input_coin));
+    }
+
+    // False only when the policy proves no swap from input_coin is profitable
+    // against `external`, the best external price net of external fees.
+    bool context_may_profit(size_t input_coin, const T& spot, const T& external) const {
+        return context_may_profit(policy.research, input_coin, spot, external);
+    }
+
+    bool context_may_profit(
+        const PolicyResearchContext<T>& context, size_t input_coin,
+        const T& spot, const T& external
+    ) const {
+        if (input_coin > 1) throw std::invalid_argument("profit bound input coin");
+        return policy.context_may_profit(context, input_coin, spot, external);
     }
 
 private:
@@ -370,9 +396,10 @@ private:
     // A nonzero policy fee is the final answer, so avoid computing the native
     // fallback unless the policy explicitly returns zero. This changes neither
     // operation order nor arithmetic on either returned branch.
-    T _fee(const std::array<T, 2>& xp) const {
+    T _fee(const std::array<T, 2>& xp, bool liquidity_operation = false) const {
         if (policy.kind != PolicyKind::None) {
-            const T policy_fee = policy.get_fee(xp);
+            const T policy_fee = liquidity_operation
+                ? policy.get_liquidity_fee(xp, D) : policy.get_fee(xp, D);
             if (policy_fee != Traits::ZERO()) {
                 return _clamp_fee(policy_fee);
             }
@@ -401,6 +428,8 @@ private:
         if (policy.kind == PolicyKind::None) {
             return;
         }
+        const T supply = totalSupply, unlocked = _donation_shares();
+        const T vp_boosted = supply > unlocked ? virtual_price * supply / (supply - unlocked) : virtual_price;
         policy.update_state(
             xp,
             price_scale,
@@ -409,7 +438,9 @@ private:
             virtual_price,
             xcp_profit,
             D,
-            last_timestamp
+            last_timestamp,
+            lp_xcp_profit,
+            vp_boosted
         );
     }
 
@@ -429,6 +460,27 @@ private:
             }
         }
         return admin_d_token_fee;
+    }
+
+    // Research (floating point): the furthest scale from price_scale toward p_new whose xcp at the current balances
+    // is at least (1 - reserve) xcp + reserve floor_xcp; price_scale if none (bisection from the affordable end).
+    T _affordable_price_scale(T p_new, const T& reserve, const T& price_scale, const std::array<T, 2>& xp,
+                              const std::array<T, 2>& A_gamma, const T& D_now, const T& xcp_now,
+                              const T& floor_xcp) const {
+        const T threshold = (T(1) - reserve) * xcp_now + reserve * floor_xcp;
+        const auto xcp_at = [&](const T& p) {
+            auto xp_p = xp;
+            xp_p[1] = xp[1] * p / price_scale;
+            return _xcp(MathOps<T>::newton_D(A_gamma[0], A_gamma[1], xp_p, D_now), p);
+        };
+        if (!(xcp_now > threshold)) return price_scale;
+        if (xcp_at(p_new) >= threshold) return p_new;
+        T lo = price_scale, hi = p_new;
+        for (int i = 0; i < 30; ++i) {
+            const T mid = (lo + hi) / T(2);
+            (xcp_at(mid) >= threshold ? lo : hi) = mid;
+        }
+        return lo;
     }
 
     // _xcp: cross-product invariant in xcp units
@@ -514,7 +566,7 @@ private:
             amounts[1] * precisions[1] * balances_ratio / Traits::PRECISION()
         };
 
-        T fee_prime = _fee(xp) * N_COINS / (4 * (N_COINS - 1));
+        T fee_prime = _fee(xp, true) * N_COINS / (4 * (N_COINS - 1));
 
         T S = amounts_scaled[0] + amounts_scaled[1];
         if (S == Traits::ZERO()) {
@@ -606,7 +658,7 @@ public:
         T* charged_lp_fee = nullptr
     ) {
         const auto minted = add_liquidity_impl(
-            amounts, min_mint_amount, donation, charged_lp_fee, nullptr
+            amounts, min_mint_amount, donation, charged_lp_fee, false
         );
         // A null result is possible only for the explicit floating-point
         // try-add surface below. The public/Vyper-shaped method keeps its
@@ -616,15 +668,14 @@ public:
 
     std::optional<T> try_add_donation(
         const std::array<T, 2>& amounts,
-        T min_mint_amount,
-        std::string& rejection
+        T min_mint_amount
     ) {
         static_assert(
             std::is_floating_point_v<T>,
             "throwless donation preview is floating-only"
         );
         return add_liquidity_impl(
-            amounts, min_mint_amount, true, nullptr, &rejection
+            amounts, min_mint_amount, true, nullptr, true
         );
     }
 
@@ -634,7 +685,7 @@ private:
         T min_mint_amount,
         bool donation,
         T* charged_lp_fee,
-        std::string* rejection_out
+        bool throwless
     ) {
         const MutableSnapshot before = mutable_snapshot();
         T local_charged_lp_fee = Traits::ZERO();
@@ -644,7 +695,7 @@ private:
                 min_mint_amount,
                 donation,
                 charged_lp_fee != nullptr ? &local_charged_lp_fee : nullptr,
-                rejection_out
+                throwless
             );
             if (!result.has_value()) {
                 restore_mutable(before);
@@ -665,7 +716,7 @@ private:
         T min_mint_amount,
         bool donation,
         T* charged_lp_fee,
-        std::string* rejection_out
+        bool throwless
     ) {
         if (amounts[0] + amounts[1] == Traits::ZERO()) {
             throw std::invalid_argument("no coins to add");
@@ -676,10 +727,7 @@ private:
         const auto reject = [&](const char* reason)
             -> std::optional<T> {
             if constexpr (std::is_floating_point_v<T>) {
-                if (rejection_out != nullptr) {
-                    *rejection_out = reason;
-                    return std::nullopt;
-                }
+                if (throwless) return std::nullopt;
             }
             throw std::runtime_error(reason);
         };
@@ -1133,7 +1181,8 @@ public:
         }
         dy = dy / precisions[idx_j];
 
-        T fee = _fee(xp) * dy / PoolTraits<T>::FEE_PRECISION();
+        const T fee_rate = _fee(xp);
+        T fee = fee_rate * dy / PoolTraits<T>::FEE_PRECISION();
         dy -= fee;
         if (dy < min_dy) {
             throw std::runtime_error("slippage");
@@ -1320,7 +1369,7 @@ public:
         }
 
         // Rebalance liquidity if there's enough profit (once per block)
-        const T lp_repeg_floor = lp_xcp_profit;
+        const T lp_repeg_floor = policy.repeg_floor(lp_xcp_profit);
         const bool target_profit_ready = vp_boosted > lp_repeg_floor;
         const bool target_block_ready = last_ts < block_timestamp;
         if (target_profit_ready && target_block_ready) {
@@ -1336,7 +1385,23 @@ public:
             // vy: p_new defaults to price_scale and the rebalance body runs
             // only if the step-limited move actually changes it (the integer
             // floor can round the move back to price_scale).
-            const T p_new = actuator_preview.p_new;
+            T p_new = actuator_preview.p_new;
+            if constexpr (!std::is_same_v<T, uint256>) {
+                const T reserve = policy.repeg_reserve();
+                if (reserve > T(0) && p_new != price_scale) {
+                    const T clipped = _affordable_price_scale(p_new, reserve, price_scale, xp, _A_gamma, _D, xcp,
+                        lp_repeg_floor * (total_supply - donation_unlocked));
+                    // a clipped move below the policy's minimum progress, or smaller than any move the actuator can
+                    // reach (scale outside its target clamp), keeps the scale (banks the budget)
+                    const T bound = price_oracle * (p_new > price_scale ? T(4) : T(6)) / T(5);
+                    const T reach = std::fabs(preview_price_scale_actuator(bound, price_oracle, price_scale,
+                        PoolTraits<T>::PRECISION(), adjustment_step_min, adjustment_step_max).p_new - price_scale);
+                    const bool outside = p_new > price_scale ? price_scale < bound : price_scale > bound;
+                    const T moved = std::fabs(clipped - price_scale);
+                    p_new = clipped == p_new || (moved >= price_scale * policy.repeg_min_progress() &&
+                                                 (!outside || moved >= reach)) ? clipped : price_scale;
+                }
+            }
 
             if (p_new != price_scale) {
                 auto xp_new = xp;
@@ -1494,9 +1559,13 @@ public:
         return policy.kind == PolicyKind::Compiled && compiled_detail::uses_swap_reports_v<T>;
     }
 
+    bool uses_cached_reports() const noexcept {
+        return policy.kind == PolicyKind::Compiled && compiled_detail::uses_cached_reports_v<T>;
+    }
+
     void refresh_policy_context(
         const T& price_feed,
-        uint64_t price_feed_timestamp
+        double price_feed_timestamp
     ) {
         if (policy.kind != PolicyKind::None) {
             policy.prepare_price_scale_call(block_timestamp, cached_price_oracle);

@@ -86,35 +86,22 @@ if(TWOCRYPTO_POOL_BUILD_BENCHMARKS)
 endif()
 
 if(TWOCRYPTO_POOL_BUILD_TESTS)
-    find_package(Boost 1.79 REQUIRED COMPONENTS json)
     enable_testing()
 
-    add_executable(yb_policy_evaluator_i tests/yb_policy_evaluator.cpp)
-    target_link_libraries(yb_policy_evaluator_i PRIVATE twocrypto::pool Boost::json)
-    pool_private_defaults(yb_policy_evaluator_i)
-
-    foreach(test IN ITEMS test_pool_snapshot test_numeric_policy test_parity_config
-                          test_price_feed_policy test_fair_price_fee_policy)
+    foreach(test IN ITEMS test_numeric_policy test_report_dual_ema)
         add_executable(${test} tests/${test}.cpp)
         target_link_libraries(${test} PRIVATE twocrypto::pool)
-        if(test STREQUAL "test_parity_config")
-            target_link_libraries(${test} PRIVATE Boost::json)
-        endif()
         pool_private_defaults(${test})
         add_test(NAME ${test} COMMAND ${test})
     endforeach()
-    pool_private_parity_policy(test_pool_snapshot)
     pool_private_parity_policy(test_numeric_policy)
 endif()
 
 install(DIRECTORY include/pools/twocrypto_fx/
     DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/pools/twocrypto_fx"
     PATTERN "yieldbasis.hpp" EXCLUDE
-    PATTERN "price_feed.hpp" EXCLUDE
-    PATTERN "fair_price_fee.hpp" EXCLUDE
-    PATTERN "reporting_fair_fee.hpp" EXCLUDE
-    PATTERN "implied_fair_fee.hpp" EXCLUDE
-    PATTERN "revealed_fair_fee.hpp" EXCLUDE)
+    PATTERN "report_dual_ema.hpp" EXCLUDE
+    PATTERN "dual_ema_price_scale.hpp" EXCLUDE)
 install(TARGETS twocrypto_pool EXPORT twocrypto_poolTargets)
 install(EXPORT twocrypto_poolTargets
     FILE twocrypto_poolTargets.cmake

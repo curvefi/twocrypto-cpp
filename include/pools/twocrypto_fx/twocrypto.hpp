@@ -428,6 +428,8 @@ private:
         if (policy.kind == PolicyKind::None) {
             return;
         }
+        const T supply = totalSupply, unlocked = _donation_shares();
+        const T vp_boosted = supply > unlocked ? virtual_price * supply / (supply - unlocked) : virtual_price;
         policy.update_state(
             xp,
             price_scale,
@@ -436,7 +438,9 @@ private:
             virtual_price,
             xcp_profit,
             D,
-            last_timestamp
+            last_timestamp,
+            lp_xcp_profit,
+            vp_boosted
         );
     }
 
@@ -456,6 +460,27 @@ private:
             }
         }
         return admin_d_token_fee;
+    }
+
+    // Research (floating point): the furthest scale from price_scale toward p_new whose xcp at the current balances
+    // is at least (1 - reserve) xcp + reserve floor_xcp; price_scale if none (bisection from the affordable end).
+    T _affordable_price_scale(T p_new, const T& reserve, const T& price_scale, const std::array<T, 2>& xp,
+                              const std::array<T, 2>& A_gamma, const T& D_now, const T& xcp_now,
+                              const T& floor_xcp) const {
+        const T threshold = (T(1) - reserve) * xcp_now + reserve * floor_xcp;
+        const auto xcp_at = [&](const T& p) {
+            auto xp_p = xp;
+            xp_p[1] = xp[1] * p / price_scale;
+            return _xcp(MathOps<T>::newton_D(A_gamma[0], A_gamma[1], xp_p, D_now), p);
+        };
+        if (!(xcp_now > threshold)) return price_scale;
+        if (xcp_at(p_new) >= threshold) return p_new;
+        T lo = price_scale, hi = p_new;
+        for (int i = 0; i < 30; ++i) {
+            const T mid = (lo + hi) / T(2);
+            (xcp_at(mid) >= threshold ? lo : hi) = mid;
+        }
+        return lo;
     }
 
     // _xcp: cross-product invariant in xcp units
@@ -633,7 +658,7 @@ public:
         T* charged_lp_fee = nullptr
     ) {
         const auto minted = add_liquidity_impl(
-            amounts, min_mint_amount, donation, charged_lp_fee, nullptr
+            amounts, min_mint_amount, donation, charged_lp_fee, false
         );
         // A null result is possible only for the explicit floating-point
         // try-add surface below. The public/Vyper-shaped method keeps its
@@ -643,15 +668,14 @@ public:
 
     std::optional<T> try_add_donation(
         const std::array<T, 2>& amounts,
-        T min_mint_amount,
-        std::string& rejection
+        T min_mint_amount
     ) {
         static_assert(
             std::is_floating_point_v<T>,
             "throwless donation preview is floating-only"
         );
         return add_liquidity_impl(
-            amounts, min_mint_amount, true, nullptr, &rejection
+            amounts, min_mint_amount, true, nullptr, true
         );
     }
 
@@ -661,7 +685,7 @@ private:
         T min_mint_amount,
         bool donation,
         T* charged_lp_fee,
-        std::string* rejection_out
+        bool throwless
     ) {
         const MutableSnapshot before = mutable_snapshot();
         T local_charged_lp_fee = Traits::ZERO();
@@ -671,7 +695,7 @@ private:
                 min_mint_amount,
                 donation,
                 charged_lp_fee != nullptr ? &local_charged_lp_fee : nullptr,
-                rejection_out
+                throwless
             );
             if (!result.has_value()) {
                 restore_mutable(before);
@@ -692,7 +716,7 @@ private:
         T min_mint_amount,
         bool donation,
         T* charged_lp_fee,
-        std::string* rejection_out
+        bool throwless
     ) {
         if (amounts[0] + amounts[1] == Traits::ZERO()) {
             throw std::invalid_argument("no coins to add");
@@ -703,10 +727,7 @@ private:
         const auto reject = [&](const char* reason)
             -> std::optional<T> {
             if constexpr (std::is_floating_point_v<T>) {
-                if (rejection_out != nullptr) {
-                    *rejection_out = reason;
-                    return std::nullopt;
-                }
+                if (throwless) return std::nullopt;
             }
             throw std::runtime_error(reason);
         };
@@ -1161,7 +1182,6 @@ public:
         dy = dy / precisions[idx_j];
 
         const T fee_rate = _fee(xp);
-        auto commit_policy_swap = policy.prepare_swap_commit(xp, D, idx_i, fee_rate);
         T fee = fee_rate * dy / PoolTraits<T>::FEE_PRECISION();
         dy -= fee;
         if (dy < min_dy) {
@@ -1184,7 +1204,6 @@ public:
             D = D_new;
         }
         T new_price_scale = tweak_price(A_gamma, xp_new, D_new, vp_preop);
-        commit_policy_swap();
         return { dy, fee, new_price_scale };
         });
     }
@@ -1208,20 +1227,6 @@ public:
 
         auto A_gamma = std::array<T, 2>{ A, gamma };
 
-        std::array<T,2> pre_fee_xp{};
-        T fee_rate{};
-        if constexpr (PolicyModel<T>::HAS_SWAP_COMMIT) {
-            // Recreate the exact pure quote used by the winning preview, before
-            // balances/D/cache change. Never infer its edge from post-fee xp.
-            pre_fee_xp = _xp({balances[0] + (idx_i == 0 ? dx : Traits::ZERO()),
-                              balances[1] + (idx_i == 1 ? dx : Traits::ZERO())}, price_scale);
-            const T y = Ops::get_y_unchecked(A, gamma, pre_fee_xp, D, idx_j);
-            const T gross_xp = pre_fee_xp[idx_j] - y;
-            pre_fee_xp[idx_j] -= gross_xp;
-            fee_rate = _fee(pre_fee_xp);
-        }
-        auto commit_policy_swap = policy.prepare_swap_commit(pre_fee_xp, D, idx_i, fee_rate);
-
         balances[idx_i] += dx;
         balances[idx_j] -= dy_after_fee;
         auto xp_new = _xp(balances, price_scale);
@@ -1238,7 +1243,6 @@ public:
             D = D_new;
         }
         T new_price_scale = tweak_price(A_gamma, xp_new, D_new, vp_preop);
-        commit_policy_swap();
         return { dy_after_fee, fee, new_price_scale };
         });
     }
@@ -1365,7 +1369,7 @@ public:
         }
 
         // Rebalance liquidity if there's enough profit (once per block)
-        const T lp_repeg_floor = lp_xcp_profit;
+        const T lp_repeg_floor = policy.repeg_floor(lp_xcp_profit);
         const bool target_profit_ready = vp_boosted > lp_repeg_floor;
         const bool target_block_ready = last_ts < block_timestamp;
         if (target_profit_ready && target_block_ready) {
@@ -1381,7 +1385,23 @@ public:
             // vy: p_new defaults to price_scale and the rebalance body runs
             // only if the step-limited move actually changes it (the integer
             // floor can round the move back to price_scale).
-            const T p_new = actuator_preview.p_new;
+            T p_new = actuator_preview.p_new;
+            if constexpr (!std::is_same_v<T, uint256>) {
+                const T reserve = policy.repeg_reserve();
+                if (reserve > T(0) && p_new != price_scale) {
+                    const T clipped = _affordable_price_scale(p_new, reserve, price_scale, xp, _A_gamma, _D, xcp,
+                        lp_repeg_floor * (total_supply - donation_unlocked));
+                    // a clipped move below the policy's minimum progress, or smaller than any move the actuator can
+                    // reach (scale outside its target clamp), keeps the scale (banks the budget)
+                    const T bound = price_oracle * (p_new > price_scale ? T(4) : T(6)) / T(5);
+                    const T reach = std::fabs(preview_price_scale_actuator(bound, price_oracle, price_scale,
+                        PoolTraits<T>::PRECISION(), adjustment_step_min, adjustment_step_max).p_new - price_scale);
+                    const bool outside = p_new > price_scale ? price_scale < bound : price_scale > bound;
+                    const T moved = std::fabs(clipped - price_scale);
+                    p_new = clipped == p_new || (moved >= price_scale * policy.repeg_min_progress() &&
+                                                 (!outside || moved >= reach)) ? clipped : price_scale;
+                }
+            }
 
             if (p_new != price_scale) {
                 auto xp_new = xp;

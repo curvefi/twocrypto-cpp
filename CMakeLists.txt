@@ -88,7 +88,7 @@ endif()
 if(TWOCRYPTO_POOL_BUILD_TESTS)
     enable_testing()
 
-    foreach(test IN ITEMS test_numeric_policy test_ar_superset_v5)
+    foreach(test IN ITEMS test_numeric_policy test_report_dual_ema)
         add_executable(${test} tests/${test}.cpp)
         target_link_libraries(${test} PRIVATE twocrypto::pool)
         pool_private_defaults(${test})
@@ -100,17 +100,8 @@ endif()
 install(DIRECTORY include/pools/twocrypto_fx/
     DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/pools/twocrypto_fx"
     PATTERN "yieldbasis.hpp" EXCLUDE
-    PATTERN "price_feed.hpp" EXCLUDE
-    PATTERN "fair_price_fee.hpp" EXCLUDE
-    PATTERN "reporting_fair_fee.hpp" EXCLUDE
-    PATTERN "reporting_fair_fee_model.hpp" EXCLUDE
-    PATTERN "oraclized_fair_fee.hpp" EXCLUDE
-    PATTERN "shaped_oraclized_fair_fee.hpp" EXCLUDE
-    PATTERN "sqrt_fair_fee.hpp" EXCLUDE
-    PATTERN "dual_ema_price_scale.hpp" EXCLUDE
-    PATTERN "implied_fair_fee.hpp" EXCLUDE
-    PATTERN "revealed_fair_fee.hpp" EXCLUDE
-    PATTERN "autoresearch" EXCLUDE)
+    PATTERN "report_dual_ema.hpp" EXCLUDE
+    PATTERN "dual_ema_price_scale.hpp" EXCLUDE)
 install(TARGETS twocrypto_pool EXPORT twocrypto_poolTargets)
 install(EXPORT twocrypto_poolTargets
     FILE twocrypto_poolTargets.cmake

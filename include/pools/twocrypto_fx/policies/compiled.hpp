@@ -27,20 +27,24 @@ namespace twocrypto_fx {
 namespace compiled_detail {
 
 #ifdef TWOCRYPTO_POLICY_HEADER
-// Opt-in research callback: inspect the exact pre-fee swap while the policy
-// still holds pre-trade state, then commit only after successful execution.
 template <typename Policy, typename T, typename = void>
-struct HasSwapCommit : std::false_type {};
+struct HasRepegReserve : std::false_type {};
 template <typename Policy, typename T>
-struct HasSwapCommit<Policy, T, std::void_t<
-    typename Policy::SwapEvidence,
-    decltype(Policy::inspect_swap(std::declval<const typename Policy::State&>(),
-        std::declval<const PolicyConfig<T>&>(), std::declval<const PolicyPoolConfig<T>&>(),
-        std::declval<const PolicyResearchContext<T>&>(), std::declval<const std::array<T,2>&>(),
-        std::declval<const T&>(), std::size_t{}, std::declval<const T&>())),
-    decltype(Policy::commit_swap(std::declval<typename Policy::State&>(),
-        std::declval<const PolicyConfig<T>&>(), std::declval<const PolicyPoolConfig<T>&>(),
-        uint64_t{}, std::declval<const typename Policy::SwapEvidence&>()))>> : std::true_type {};
+struct HasRepegReserve<Policy, T, std::void_t<decltype(Policy::repeg_reserve(
+    std::declval<const PolicyConfig<T>&>()))>> : std::true_type {};
+
+template <typename Policy, typename T, typename = void>
+struct HasRepegFloor : std::false_type {};
+template <typename Policy, typename T>
+struct HasRepegFloor<Policy, T, std::void_t<decltype(Policy::repeg_floor(
+    std::declval<const typename Policy::State&>(), std::declval<const PolicyConfig<T>&>(),
+    std::declval<const T&>()))>> : std::true_type {};
+
+template <typename Policy, typename T, typename = void>
+struct HasRepegMinProgress : std::false_type {};
+template <typename Policy, typename T>
+struct HasRepegMinProgress<Policy, T, std::void_t<decltype(Policy::repeg_min_progress(
+    std::declval<const PolicyConfig<T>&>()))>> : std::true_type {};
 
 template <typename Policy, typename T, typename = void>
 struct HasLiquidityFee : std::false_type {};
@@ -82,6 +86,16 @@ struct HasContextFeeFloor : std::false_type {};
 
 template <typename Policy, typename T>
 struct HasContextFeeFloor<Policy, T, std::void_t<decltype(Policy::context_fee_floor(
+    std::declval<const typename Policy::State&>(),
+    std::declval<const PolicyConfig<T>&>(),
+    std::declval<const PolicyPoolConfig<T>&>(),
+    std::declval<const PolicyResearchContext<T>&>(), std::size_t{}))>> : std::true_type {};
+
+template <typename Policy, typename T, typename = void>
+struct HasReportTerms : std::false_type {};
+
+template <typename Policy, typename T>
+struct HasReportTerms<Policy, T, std::void_t<decltype(Policy::report_terms(
     std::declval<const typename Policy::State&>(),
     std::declval<const PolicyConfig<T>&>(),
     std::declval<const PolicyPoolConfig<T>&>(),

@@ -16,12 +16,6 @@ namespace twocrypto_fx {
 template <typename T>
 class PolicyModel {
 public:
-#ifdef TWOCRYPTO_POLICY_HEADER
-    static constexpr bool HAS_SWAP_COMMIT =
-        compiled_detail::HasSwapCommit<ChallengeFeePolicy<T>, T>::value;
-#else
-    static constexpr bool HAS_SWAP_COMMIT = false;
-#endif
     PolicyKind kind = PolicyKind::None;
     PolicyConfig<T> params{};
     PolicyPoolConfig<T> config{};
@@ -50,27 +44,6 @@ public:
         }
 #endif
         return get_fee(xp, live_D);
-    }
-
-    auto prepare_swap_commit(const std::array<T,2>& pre_fee_xp, const T& live_D,
-                             std::size_t input_coin, const T& charged_fee_rate) {
-#ifdef TWOCRYPTO_POLICY_HEADER
-        if constexpr (HAS_SWAP_COMMIT) {
-            using Policy = ChallengeFeePolicy<T>;
-            typename Policy::SwapEvidence evidence{};
-            if (kind == PolicyKind::Compiled)
-                evidence = Policy::inspect_swap(compiled_state, params, config, research,
-                    pre_fee_xp, live_D, input_coin, charged_fee_rate);
-            const uint64_t timestamp = research.block_timestamp;
-            return [this, evidence, timestamp]() {
-                if (kind == PolicyKind::Compiled)
-                    Policy::commit_swap(compiled_state, params, config, timestamp, evidence);
-            };
-        } else
-#endif
-        {
-            return []() {};
-        }
     }
 
     explicit PolicyModel(PolicyKind policy_kind) : kind(policy_kind) {
@@ -165,8 +138,9 @@ public:
         if (!std::isfinite(timestamp) || timestamp < 0) {
             throw std::invalid_argument("policy price feed timestamp must be finite and nonnegative");
         }
-        if (timestamp > research.block_timestamp) {
-            throw std::invalid_argument("policy price feed is from the future");
+        // Reports may lead the block by up to 60 s; the policy owns admission.
+        if (timestamp > static_cast<double>(research.block_timestamp) + 60.0) {
+            throw std::invalid_argument("policy price feed is more than 60 s after the block");
         }
         research.price_feed = price;
         research.price_feed_timestamp = timestamp;
@@ -235,6 +209,19 @@ public:
         return true;
     }
 
+    // Effective report terms for coin_in in `context` (price_feed 0 keeps the stored one); nullopt without the hook.
+    std::optional<PolicyReportTerms<T>> report_terms(
+        [[maybe_unused]] const PolicyResearchContext<T>& context, [[maybe_unused]] std::size_t coin_in
+    ) const {
+#ifdef TWOCRYPTO_POLICY_HEADER
+        if constexpr (compiled_detail::HasReportTerms<ChallengeFeePolicy<T>, T>::value) {
+            if (kind == PolicyKind::Compiled)
+                return ChallengeFeePolicy<T>::report_terms(compiled_state, params, config, context, coin_in);
+        }
+#endif
+        return std::nullopt;
+    }
+
     T get_fee([[maybe_unused]] const std::array<T, 2>& xp,
               [[maybe_unused]] const T& live_pool_D = T(0)) const {
         switch (kind) {
@@ -279,6 +266,33 @@ public:
         }
     }
 
+    // Share of the re-peg budget one price-scale step may spend (research); 0 leaves the native gate alone.
+    T repeg_reserve() const {
+#ifdef TWOCRYPTO_POLICY_HEADER
+        if constexpr (compiled_detail::HasRepegReserve<ChallengeFeePolicy<T>, T>::value)
+            if (kind == PolicyKind::Compiled) return ChallengeFeePolicy<T>::repeg_reserve(params);
+#endif
+        return T(0);
+    }
+
+    // LP floor the re-peg gate uses (research); the pool's protected floor unless the policy releases part of it.
+    T repeg_floor(const T& floor) const {
+#ifdef TWOCRYPTO_POLICY_HEADER
+        if constexpr (compiled_detail::HasRepegFloor<ChallengeFeePolicy<T>, T>::value)
+            if (kind == PolicyKind::Compiled) return ChallengeFeePolicy<T>::repeg_floor(compiled_state, params, floor);
+#endif
+        return floor;
+    }
+
+    // Smallest relative move a clipped re-peg step may make (research); 0: any.
+    T repeg_min_progress() const {
+#ifdef TWOCRYPTO_POLICY_HEADER
+        if constexpr (compiled_detail::HasRepegMinProgress<ChallengeFeePolicy<T>, T>::value)
+            if (kind == PolicyKind::Compiled) return ChallengeFeePolicy<T>::repeg_min_progress(params);
+#endif
+        return T(0);
+    }
+
     T get_price_scale() {
         switch (kind) {
         case PolicyKind::None:
@@ -303,7 +317,9 @@ public:
         [[maybe_unused]] const T& virtual_price,
         [[maybe_unused]] const T& xcp_profit,
         [[maybe_unused]] const T& d_value,
-        [[maybe_unused]] uint64_t oracle_timestamp
+        [[maybe_unused]] uint64_t oracle_timestamp,
+        [[maybe_unused]] const T& lp_floor = T(0),
+        [[maybe_unused]] const T& vp_boosted = T(0)
     ) {
         if (kind == PolicyKind::None) return;
         if (kind != PolicyKind::Compiled) {
@@ -318,7 +334,9 @@ public:
             virtual_price,
             xcp_profit,
             d_value,
-            oracle_timestamp
+            oracle_timestamp,
+            lp_floor,
+            vp_boosted
         };
         ChallengeFeePolicy<T>::update_state(
             compiled_state, research, params, config, update

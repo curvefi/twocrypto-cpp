@@ -14,8 +14,6 @@ namespace arb {
 namespace pools {
 namespace twocrypto_fx {
 
-inline constexpr uint64_t POLICY_BPS_SCALE = 10000ULL;
-
 enum class PolicyKind {
     None,
     Compiled,
@@ -85,6 +83,22 @@ struct PolicyUpdate {
     const T& xcp_profit;
     const T& D;
     uint64_t oracle_timestamp;
+    T lp_floor{0};    // research: the LP-protected vp floor (lp_xcp_profit)
+    T vp_boosted{0};  // research: vp over the supply less the burnable donation shares
+};
+
+// Effective report fee terms of a compiled policy for one input coin
+// (PolicyModel::report_terms). usable == false: every swap pays fallback.
+template <typename T>
+struct PolicyReportTerms {
+    bool usable{false};
+    T price{};
+    T weight{};
+    T base{};
+    T capture{};
+    T fallback{};
+    T base2{};     // second capture tier (capture2 > 0): the fresh fee is the lower of the two tiers
+    T capture2{};
 };
 
 } // namespace twocrypto_fx

@@ -98,6 +98,11 @@ TWOCRYPTO_HARNESS_I="$PWD/build/yb-parity/benchmark_harness_i" \
   uv run --frozen --no-sync pytest -q -o addopts='' tests/test_boa_parity_fxswap_ext_fee.py
 ```
 
+`include/pools/twocrypto_fx/policies/report_dual_ema.hpp` is the floating-point
+research policy: a report fee over the same dual-EMA price scale (13 parameters;
+the fee rules are stated at the top of the header). Earlier research policies are
+kept outside the build under the ignored `archive/`.
+
 The installed pool package does not select or hash a concrete policy. Policy
 macros and any evaluator identity fields remain private to parity executables.
 

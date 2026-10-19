@@ -4,10 +4,12 @@
 // timestamps in seconds (reports in microseconds on chain: observation_us / 10**6 here).
 //
 // Price scale (trend-gated dual EMA, "arch A"):
-//   obs     = the admissible report delivered with this touch, else the pool's post-trade last_prices
+//   obs     = the report while younger than report_lifetime_s (the admissible one delivered with this touch, else the
+//             stored one), else the pool's post-trade last_prices; report_lifetime_s < 0 (research only, no on-chain
+//             counterpart): the report delivered with this touch, else last_prices
 //   fast    = EMA(obs, fast_half_life_s), slow = EMA(obs, slow_half_life_s), obs clamped to [scale / 2, 2 scale]
 //   w       = min(1, |fast / slow - 1| / trend_gate)                      (0 when trend_gate = 0)
-//   target  = fast + w (latest - fast),   latest = this touch's report, else the stored one
+//   target  = fast + w (obs - fast)
 //   move    = min(|target - scale| / 2, step_cap * scale)
 //   return scale +- TWEAK_PRICE_MULTIPLIER * move                        (the pool's tweak_price moves 1/5 of the way)
 //
@@ -33,15 +35,17 @@ namespace arb::pools::twocrypto_fx {
 template <typename T> struct ChallengeFeePolicy {
     static_assert(std::is_floating_point_v<T>, "report_lean is a floating-point research model");
 
-    inline static constexpr PolicyDescriptor<8> DESCRIPTOR{"report_lean", {{
+    // Bounds are YBOraclizedPolicy._set_policy_config's; report_lifetime_s also admits -1 (research only, see obs above).
+    inline static constexpr PolicyDescriptor<9> DESCRIPTOR{"report_lean", {{
         {"base_fee", 0, "relative", 0.003L, 0.00001L, 0.1L, 0.00001L},
         {"capture", 1, "dimensionless", 0.80L, 0.0L, 1.0L, 0.005L},
         {"fallback_fee", 2, "relative", 0.015L, 0.001L, 0.1L, 0.0001L},
         {"relax_time_s", 3, "seconds", 300.0L, 1.0L, 3600.0L, 1.0L},
-        {"fast_half_life_s", 4, "seconds", 3600.0L, 60.0L, 604800.0L, 1.0L},
-        {"slow_half_life_s", 5, "seconds", 10800.0L, 600.0L, 2592000.0L, 1.0L},
+        {"fast_half_life_s", 4, "seconds", 3600.0L, 600.0L, 604800.0L, 1.0L},
+        {"slow_half_life_s", 5, "seconds", 10800.0L, 600.0L, 604800.0L, 1.0L},
         {"trend_gate", 6, "relative", 0.008L, 0.0L, 0.1L, 0.0001L},
-        {"step_cap", 7, "relative", 0.0012L, 0.00001L, 0.03L, 0.00001L},
+        {"step_cap", 7, "relative", 0.0012L, 0.00001L, 0.006L, 0.00001L},
+        {"report_lifetime_s", 8, "seconds", 5400.0L, -1.0L, 14400.0L, 1.0L},
     }}};
     static constexpr std::size_t PARAM_COUNT = DESCRIPTOR.size();
     static constexpr const char *NAME = DESCRIPTOR.name.data();
@@ -114,6 +118,17 @@ template <typename T> struct ChallengeFeePolicy {
     }
     // This touch's admitted report price, 0 when none.
     static T delivered(const State &s, const PolicyResearchContext<T> &x) { return admissible(s.report, x) ? x.price_feed : T(0); }
+    // The report price the price-scale driver observes on this touch, 0 when it observes last_prices. Vyper:
+    // _observed_price, the stored report (deliver_oracle_report stores it before the pool operation) while
+    // report_age < DriverConfig.report_lifetime, the age clamped at 0 for an observation after the block; lifetime 0 never
+    // observes a report. A negative lifetime (research only) observes the report delivered with this touch alone.
+    static T driver_report(const State &s, const PolicyConfig<T> &p, const PolicyResearchContext<T> &x) {
+        const double lifetime = double(p.params[8]);
+        if (lifetime < 0) return delivered(s, x);
+        const Report r = admissible(s.report, x) ? Report{x.price_feed, x.price_feed_timestamp} : s.report;
+        const double age = double(x.block_timestamp) - r.timestamp;
+        return r.price > T(0) && age >= -FUTURE_WINDOW_S && std::max(0.0, age) < lifetime ? r.price : T(0);
+    }
 
     // ---------------------------------------------------------------- fee
     // Effective report terms for input coin `coin_in` (the same for both coins: no toward/away split). The effective
@@ -235,7 +250,7 @@ template <typename T> struct ChallengeFeePolicy {
     static T get_price_scale(const State &s, PolicyResearchContext<T> &x, const PolicyConfig<T> &p, const PolicyPoolConfig<T> &) {
         const T scale = s.price_scale;
         if (scale == T(0)) return T(0);
-        const T report = delivered(s, x);
+        const T report = driver_report(s, p, x);
         // This touch's observation: the report, else the pool's post-trade last_prices (Vyper: staticcall pool.last_prices()).
         const T obs = report > T(0) ? report : x.pool_last_prices > T(0) ? x.pool_last_prices : s.last_prices;
         const auto [fast, slow] = emas(s, obs, x.block_timestamp, p);
@@ -254,9 +269,10 @@ template <typename T> struct ChallengeFeePolicy {
     static void update_state(State &s, PolicyResearchContext<T> &x, const PolicyConfig<T> &p, const PolicyPoolConfig<T> &c,
                              const PolicyUpdate<T> &u) {
         // An inadmissible report is a touch without one (on chain the swap reverts and the arb resubmits without it).
-        const T report = delivered(s, x);
+        const T delivered_price = delivered(s, x);
+        const T report = driver_report(s, p, x);
         const uint64_t now = x.block_timestamp;
-        if (report > T(0)) s.report = {report, x.price_feed_timestamp};
+        if (delivered_price > T(0)) s.report = {delivered_price, x.price_feed_timestamp};
         // This touch's observation: the report, else the pool's post-trade last_prices.
         const T observed = report > T(0) ? report : u.last_prices;
         if (s.price_scale == T(0)) {

@@ -1,5 +1,6 @@
 // Focused test for policies/report_lean.hpp: the pure target call and its half-gap step cap, the trend gate, report
-// admission and ageing, the context fee floor, reportless touches, and a pool that follows a trending report.
+// admission and ageing, the context fee floor, the driver's report lifetime (reportless touches, dust after an idle hour,
+// a jump right after a delivery), and a pool that follows a trending report.
 // Units: prices in coin 0 per coin 1, fees and caps as fractions, times in seconds.
 #include <cmath>
 #include <cstddef>
@@ -17,7 +18,7 @@ void require(bool value, const char* what) { if (!value) throw std::runtime_erro
 bool near(double a, double b, double tol) { return std::abs(a - b) <= tol; }
 
 int main() {
-    static_assert(P::PARAM_COUNT == 8, "eight parameters");
+    static_assert(P::PARAM_COUNT == 9, "nine parameters");
     static_assert(std::is_invocable_v<decltype(&P::get_price_scale), const P::State&, fx::PolicyResearchContext<double>&,
                                       const fx::PolicyConfig<double>&, const fx::PolicyPoolConfig<double>&>,
                   "get_price_scale takes the policy state const");
@@ -135,12 +136,15 @@ int main() {
         require(terms.usable && near(terms.weight, .5, 1e-12), "age relax/4: weight 1/2");
         a.report.timestamp = double(t0 + 100) - p.params[3];
         require(!P::report_terms(a, p, c, x, 0).usable, "age relax: unusable, every swap pays the fallback");
-        // An inadmissible report is a touch without one: the stored report and the EMA observation ignore it.
+        // An inadmissible report is a touch without one: the stored report and the EMA observation ignore it (lifetime
+        // -1: a touch without a delivered report observes last_prices).
         P::State u = s;
+        fx::PolicyConfig<double> once = p;
+        once.params[8] = -1;
         x.price_feed = 2500, x.price_feed_timestamp = double(t0 - 5);
         const std::array<double, 2> xp{1e6, 1e6};
         const double ps = 2000, last = 2003, one = 1, D = 2e6;
-        P::update_state(u, x, p, c, {xp, ps, ps, last, one, one, D, x.block_timestamp});
+        P::update_state(u, x, once, c, {xp, ps, ps, last, one, one, D, x.block_timestamp});
         require(u.report.price == 2000 && u.last_prices == last, "inadmissible report ignored");
     }
     {   // Context floor: a stored report at or behind the committed spot (2000 vs 2005) makes every coin-0-in swap pay F;
@@ -152,7 +156,8 @@ int main() {
         require(P::context_fee_floor(f, p, c, x, 0) == p.params[2], "no corrective coin-0-in swap: F");
         require(P::context_fee_floor(f, p, c, x, 1) == p.params[0], "fresh report, coin 1 in: the base");
     }
-    {   // Reportless touch: latest uses obs (pool_last_prices) instead of pulling toward an expired s.report.price.
+    {   // Reportless touch: a report older than report_lifetime_s (20 min vs 5 min) is not the observation; latest is
+        // pool_last_prices instead of the stale s.report.price.
         P::State rless = s;
         rless.fast_ema = 2016, rless.slow_ema = 2000;  // 80 bp apart: w = 1 at trend_gate 80 bp
         rless.price_scale = 2020;
@@ -161,7 +166,7 @@ int main() {
         x.block_timestamp = t0, x.price_feed = 0, x.pool_last_prices = 2022;
         x.report_max_age_s = 1e300;
         fx::PolicyConfig<double> wide = p;
-        wide.params[7] = .01;
+        wide.params[7] = .01, wide.params[8] = 300;
         require(near(P::get_price_scale(rless, x, wide, c), 2020 + 5 * 1.0, 1e-9), "reportless touch moves half of the 2.0 gap toward pool_last_prices 2022");
     }
     {   // Pool smoke test: a report trending 2000 -> 2100 over 5 h drags the scale along under alternating swaps.
@@ -182,6 +187,84 @@ int main() {
             pool.clear_policy_price_feed();
         }
         require(pool.cached_price_scale > 2050 && pool.cached_price_scale < 2110, "the scale follows the trending report");
+    }
+    {   // Report lifetime L: a touch without its own report observes the stored report (2100) while its age < L, else
+        // last_prices (2000); L = 0 never observes a report, not even one delivered with the touch; L < 0 observes the
+        // delivered one alone. update_state stores the observation in last_prices; the target call agrees.
+        const auto observe = [&](double lifetime, uint64_t age, double delivered) {
+            fx::PolicyConfig<double> q = p;
+            q.params[6] = 0, q.params[8] = lifetime;
+            P::State t = s;
+            t.report = {2100, double(t0)};
+            fx::PolicyResearchContext<double> x{};
+            x.block_timestamp = t0 + age, x.report_max_age_s = 1e300, x.pool_last_prices = 2000;
+            if (delivered > 0) x.price_feed = delivered, x.price_feed_timestamp = double(x.block_timestamp);
+            const double asked = P::get_price_scale(t, x, q, c);
+            P::update_state(t, x, q, c, {t.xp, 2000, 2000, 2000, 1, 1, t.D, x.block_timestamp});
+            require((t.last_prices > 2001) == (asked > 2000 + 1e-6), "the target call observes what the update integrates");
+            return t.last_prices;
+        };
+        for (const double L : {12.0, 300.0, 5400.0}) {
+            require(observe(L, uint64_t(L) - 1, 0) == 2100, "age L - 1: the stored report");
+            require(observe(L, uint64_t(L), 0) == 2000, "age L: last_prices");
+        }
+        require(observe(0, 0, 0) == 2000 && observe(0, 1, 2050) == 2000, "L = 0: never a report");
+        require(observe(-1, 1, 0) == 2000 && observe(-1, 1, 2050) == 2050, "L = -1: the delivered report alone");
+        require(observe(5400, 1, 2050) == 2050, "a delivered report is the observation and the new stored one");
+    }
+    {   // Through TwoCryptoPool: a report at the pool's price (2000, so the delivering swap steps nothing) arrives with a
+        // swap, then one reportless touch. Dust either way after an idle hour observes the stored report while 3600 s < L,
+        // else the touch's last_prices, which the dust moves by under 0.1 bp; a touch 13 s after the delivery observes the
+        // report for L = 300 and last_prices for L = 12.
+        struct Seen { double observed, before, after; };
+        const auto touch = [&](double lifetime, uint64_t idle, int coin_in) {
+            fx::PolicyConfig<double> q = p;
+            q.params[0] = .002, q.params[2] = .015, q.params[7] = .001, q.params[8] = lifetime;
+            Pool pool({1, 1}, 50000, 0, .015, .015, .01, 1e-10, .03, 865, 2000, .5, 0, fx::PolicyKind::Compiled, q);
+            pool.set_block_timestamp(t0);
+            pool.refresh_policy_context();
+            pool.clear_policy_price_feed();
+            pool.add_liquidity({3e7, 1.5e4}, 0);
+            pool.set_block_timestamp(t0 + 12);
+            pool.refresh_policy_context(2000, double(t0 + 12));
+            pool.exchange(0, 1, 6e5, 0);
+            pool.clear_policy_price_feed();
+            const double before = pool.last_prices;
+            pool.set_block_timestamp(t0 + 12 + idle);
+            pool.refresh_policy_context();
+            pool.exchange(coin_in, 1 - coin_in, coin_in == 0 ? 1e-6 : 5e-10, 0);
+            return Seen{pool.policy.compiled_state.last_prices, before, pool.last_prices};
+        };
+        for (const int coin_in : {0, 1}) {
+            require(touch(5400, 3600, coin_in).observed == 2000, "idle hour, L = 90 min: dust observes the stored report");
+            const Seen raw = touch(1800, 3600, coin_in);
+            require(raw.observed == raw.after && raw.after != 2000 && std::abs(raw.after / raw.before - 1) < 1e-5,
+                    "idle hour, L = 30 min: dust observes last_prices, moved < 0.1 bp");
+        }
+        require(touch(300, 13, 0).observed == 2000, "13 s after the delivery, L = 300: the report");
+        const Seen late = touch(12, 13, 0);
+        require(late.observed == late.after && late.after != 2000, "13 s after the delivery, L = 12: last_prices");
+    }
+    {   // Jump right after a delivery: scale, EMAs and the report at 2000, then the market jumps 10% and only reportless
+        // touches follow, at last_prices 2161.5 (2200 less a 175 bp fallback wedge), every 12 s or once after 30 min.
+        // While the report is younger than L the EMAs stay at 2000 (the trend gate never sees the jump); L = 0 follows
+        // last_prices alike on both schedules (a constant observation composes); with L = 300 the idle pool applies
+        // last_prices over the whole 30 min and ends nearer the market than 12 s callbacks, which held the report 5 min.
+        const auto fast_after = [&](double lifetime, uint64_t step) {
+            fx::PolicyConfig<double> q = p;
+            q.params[8] = lifetime;
+            P::State t = s;
+            for (uint64_t now = t0 + step; now <= t0 + 1800; now += step) {
+                fx::PolicyResearchContext<double> x{};
+                x.block_timestamp = now, x.report_max_age_s = 1e300, x.pool_last_prices = 2161.5;
+                P::update_state(t, x, q, c, {t.xp, 2000, 2000, 2161.5, 1, 1, t.D, now});
+            }
+            return t.fast_ema;
+        };
+        require(near(fast_after(5400, 12), 2000, 1e-9) && near(fast_after(5400, 1800), 2000, 1e-9),
+                "L = 90 min: the jump is invisible to the EMAs");
+        require(fast_after(0, 12) > 2001 && near(fast_after(0, 12), fast_after(0, 1800), 1e-8), "L = 0: last_prices");
+        require(fast_after(300, 1800) > fast_after(300, 12) + 1, "L = 300: the idle pool integrates last_prices longer");
     }
     return 0;
 }

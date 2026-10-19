@@ -100,12 +100,16 @@ TWOCRYPTO_HARNESS_I="$PWD/build/yb-parity/benchmark_harness_i" \
 
 `include/pools/twocrypto_fx/policies/report_lean.hpp` (id `report_lean`) is the
 floating-point research policy: a report fee over a trend-gated dual-EMA target
-with half-gap pursuit. Its 8 parameters are `base_fee`, `capture`,
+with half-gap pursuit. Its 9 parameters are `base_fee`, `capture`,
 `fallback_fee`, `relax_time_s`, `fast_half_life_s`, `slow_half_life_s`,
-`trend_gate` and `step_cap`; each step moves the scale by at most
-`min(gap / 2, step_cap * scale)` (`PURSUIT_GAIN = 0.5`), and the fee rules are
-stated at the top of the header. Concrete policy headers are build inputs, not
-part of the installed package; earlier research policies live in git history.
+`trend_gate`, `step_cap` and `report_lifetime_s`; each step moves the scale by
+at most `min(gap / 2, step_cap * scale)` (`PURSUIT_GAIN = 0.5`). The EMAs
+observe the delivered-or-stored report while it is younger than
+`report_lifetime_s`, else the pool's `last_prices` (`0` never observes a report;
+`-1`, research only, observes a report on its delivering touch alone, the rule
+of the runs before 2026-10-19). The fee rules are stated at the top of the
+header. Concrete policy headers are build inputs, not part of the installed
+package; earlier research policies live in git history.
 
 The installed pool package does not select or hash a concrete policy. Policy
 macros and any evaluator identity fields remain private to parity executables.

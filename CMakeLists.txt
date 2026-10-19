@@ -88,7 +88,7 @@ endif()
 if(TWOCRYPTO_POOL_BUILD_TESTS)
     enable_testing()
 
-    foreach(test IN ITEMS test_numeric_policy test_report_dual_ema)
+    foreach(test IN ITEMS test_numeric_policy test_report_lean)
         add_executable(${test} tests/${test}.cpp)
         target_link_libraries(${test} PRIVATE twocrypto::pool)
         pool_private_defaults(${test})
@@ -97,11 +97,14 @@ if(TWOCRYPTO_POOL_BUILD_TESTS)
     pool_private_parity_policy(test_numeric_policy)
 endif()
 
+# Concrete policies are build inputs selected by the final executable (POLICY_HEADER_PATH); the installed package
+# carries only the compiled-policy dispatch.
 install(DIRECTORY include/pools/twocrypto_fx/
     DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/pools/twocrypto_fx"
-    PATTERN "yieldbasis.hpp" EXCLUDE
-    PATTERN "report_dual_ema.hpp" EXCLUDE
-    PATTERN "dual_ema_price_scale.hpp" EXCLUDE)
+    PATTERN "policies" EXCLUDE
+    PATTERN ".DS_Store" EXCLUDE)
+install(FILES include/pools/twocrypto_fx/policies/compiled.hpp
+    DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/pools/twocrypto_fx/policies")
 install(TARGETS twocrypto_pool EXPORT twocrypto_poolTargets)
 install(EXPORT twocrypto_poolTargets
     FILE twocrypto_poolTargets.cmake

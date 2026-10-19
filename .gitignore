@@ -1,5 +1,5 @@
 /build*/
-_install/
+/_install*/
 cmake-build-*/
 compile_commands.json
 .cache/
@@ -9,3 +9,4 @@ __pycache__/
 .venv/
 *.egg-info/
 /archive/
+.DS_Store

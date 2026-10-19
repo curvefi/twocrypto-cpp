@@ -98,10 +98,14 @@ TWOCRYPTO_HARNESS_I="$PWD/build/yb-parity/benchmark_harness_i" \
   uv run --frozen --no-sync pytest -q -o addopts='' tests/test_boa_parity_fxswap_ext_fee.py
 ```
 
-`include/pools/twocrypto_fx/policies/report_dual_ema.hpp` is the floating-point
-research policy: a report fee over the same dual-EMA price scale (13 parameters;
-the fee rules are stated at the top of the header). Earlier research policies are
-kept outside the build under the ignored `archive/`.
+`include/pools/twocrypto_fx/policies/report_lean.hpp` (id `report_lean`) is the
+floating-point research policy: a report fee over a trend-gated dual-EMA target
+with half-gap pursuit. Its 8 parameters are `base_fee`, `capture`,
+`fallback_fee`, `relax_time_s`, `fast_half_life_s`, `slow_half_life_s`,
+`trend_gate` and `step_cap`; each step moves the scale by at most
+`min(gap / 2, step_cap * scale)` (`PURSUIT_GAIN = 0.5`), and the fee rules are
+stated at the top of the header. Concrete policy headers are build inputs, not
+part of the installed package; earlier research policies live in git history.
 
 The installed pool package does not select or hash a concrete policy. Policy
 macros and any evaluator identity fields remain private to parity executables.

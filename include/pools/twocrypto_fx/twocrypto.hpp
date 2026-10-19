@@ -118,6 +118,12 @@ public:
     T donation_protection_period = T(10 * 60);
     T donation_protection_lp_threshold = Traits::PRECISION() * 20 / 100; // 20%
     T donation_protection_extension_remainder = Traits::ZERO();
+
+    // Research ledger (floating only): log-xcp lost / gained by committed scale steps at fixed balances, and log supply
+    // added by donations after the first deposit.
+    double step_cost_log_{0.0};
+    double step_gain_log_{0.0};
+    double donated_supply_log_{0.0};
     // Value-semantic transaction boundary for all mutable pool state. The
     // policy snapshot preserves research context and only the active policy
     // state's small mutable fields; immutable config and inactive states stay
@@ -148,6 +154,10 @@ public:
         T donation_protection_expiry_ts{};
         T donation_protection_extension_remainder{};
 
+        double step_cost_log_{0.0};
+        double step_gain_log_{0.0};
+        double donated_supply_log_{0.0};
+
         typename PolicyModel<T>::MutableSnapshot policy{};
     };
 
@@ -174,6 +184,9 @@ public:
         snapshot.donation_protection_expiry_ts = donation_protection_expiry_ts;
         snapshot.donation_protection_extension_remainder =
             donation_protection_extension_remainder;
+        snapshot.step_cost_log_ = step_cost_log_;
+        snapshot.step_gain_log_ = step_gain_log_;
+        snapshot.donated_supply_log_ = donated_supply_log_;
         snapshot.policy = policy.mutable_snapshot();
         return snapshot;
     }
@@ -200,6 +213,9 @@ public:
         donation_protection_expiry_ts = snapshot.donation_protection_expiry_ts;
         donation_protection_extension_remainder =
             snapshot.donation_protection_extension_remainder;
+        step_cost_log_ = snapshot.step_cost_log_;
+        step_gain_log_ = snapshot.step_gain_log_;
+        donated_supply_log_ = snapshot.donated_supply_log_;
         policy.restore_mutable(snapshot.policy);
     }
 
@@ -819,6 +835,11 @@ private:
                 }
                 last_donation_release_ts = T(block_timestamp) - new_elapsed;
                 donation_shares = new_donation_shares;
+                if constexpr (std::is_floating_point_v<T>) {
+                    if (token_supply > Traits::ZERO()) {
+                        donated_supply_log_ += std::log(static_cast<double>(token_supply + d_token) / static_cast<double>(token_supply));
+                    }
+                }
                 totalSupply += d_token;
             } else {
                 T relative_lp_add = (
@@ -1373,6 +1394,13 @@ public:
         const bool target_profit_ready = vp_boosted > lp_repeg_floor;
         const bool target_block_ready = last_ts < block_timestamp;
         if (target_profit_ready && target_block_ready) {
+            if constexpr (!std::is_same_v<T, uint256>) {
+                // Research: what an on-chain policy would read back from the pool at this point.
+                policy.research.pool_xp = xp;
+                policy.research.pool_headroom = T(1) - lp_repeg_floor / vp_boosted;
+                policy.research.pool_last_prices = last_prices;
+                policy.research.pool_xcp_profit = xcp_profit;
+            }
             const T p_policy = _policy_price_target(block_timestamp, price_oracle);
             const auto actuator_preview = preview_price_scale_actuator(
                 p_policy,
@@ -1445,6 +1473,13 @@ public:
                     D = new_D;
                     virtual_price      = new_virtual_price;
                     cached_price_scale = p_new;
+                    if constexpr (std::is_floating_point_v<T>) {
+                        if (xcp > T(0) && new_xcp > T(0)) {
+                            const double dl = std::log(static_cast<double>(new_xcp) / static_cast<double>(xcp));
+                            if (dl < 0.0) step_cost_log_ -= dl;
+                            else if (dl > 0.0) step_gain_log_ += dl;
+                        }
+                    }
 
                     if (donation_shares_to_burn > PoolTraits<T>::ZERO()) {
                         // Carry last_donation_release_ts forward so that

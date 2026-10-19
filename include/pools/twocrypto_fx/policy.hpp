@@ -35,17 +35,6 @@ public:
 
     PolicyModel() = default;
 
-    T get_liquidity_fee(const std::array<T,2>& xp, const T& live_D) const {
-#ifdef TWOCRYPTO_POLICY_HEADER
-        if constexpr (compiled_detail::HasLiquidityFee<ChallengeFeePolicy<T>, T>::value) {
-            if (kind == PolicyKind::Compiled)
-                return ChallengeFeePolicy<T>::get_liquidity_fee(
-                    compiled_state, params, config, research, xp, live_D);
-        }
-#endif
-        return get_fee(xp, live_D);
-    }
-
     explicit PolicyModel(PolicyKind policy_kind) : kind(policy_kind) {
         params.kind = policy_kind;
         require_available_kind();
@@ -254,43 +243,11 @@ public:
             return [this, prepared, live_pool_D](const std::array<T, 2>& xp) {
                 return kind == PolicyKind::Compiled ? prepared(xp) : get_fee(xp, live_pool_D);
             };
-        } else if constexpr (compiled_detail::HasPreparedFee<ChallengeFeePolicy<T>, T>::value) {
-            auto prepared = ChallengeFeePolicy<T>::prepare_fee(compiled_state, params, config, research);
-            return [this, prepared, live_pool_D](const std::array<T, 2>& xp) {
-                return kind == PolicyKind::Compiled ? prepared(xp) : get_fee(xp, live_pool_D);
-            };
         } else
 #endif
         {
             return [this, live_pool_D](const std::array<T, 2>& xp) { return get_fee(xp, live_pool_D); };
         }
-    }
-
-    // Share of the re-peg budget one price-scale step may spend (research); 0 leaves the native gate alone.
-    T repeg_reserve() const {
-#ifdef TWOCRYPTO_POLICY_HEADER
-        if constexpr (compiled_detail::HasRepegReserve<ChallengeFeePolicy<T>, T>::value)
-            if (kind == PolicyKind::Compiled) return ChallengeFeePolicy<T>::repeg_reserve(params);
-#endif
-        return T(0);
-    }
-
-    // LP floor the re-peg gate uses (research); the pool's protected floor unless the policy releases part of it.
-    T repeg_floor(const T& floor) const {
-#ifdef TWOCRYPTO_POLICY_HEADER
-        if constexpr (compiled_detail::HasRepegFloor<ChallengeFeePolicy<T>, T>::value)
-            if (kind == PolicyKind::Compiled) return ChallengeFeePolicy<T>::repeg_floor(compiled_state, params, floor);
-#endif
-        return floor;
-    }
-
-    // Smallest relative move a clipped re-peg step may make (research); 0: any.
-    T repeg_min_progress() const {
-#ifdef TWOCRYPTO_POLICY_HEADER
-        if constexpr (compiled_detail::HasRepegMinProgress<ChallengeFeePolicy<T>, T>::value)
-            if (kind == PolicyKind::Compiled) return ChallengeFeePolicy<T>::repeg_min_progress(params);
-#endif
-        return T(0);
     }
 
     T get_price_scale() {
@@ -317,9 +274,7 @@ public:
         [[maybe_unused]] const T& virtual_price,
         [[maybe_unused]] const T& xcp_profit,
         [[maybe_unused]] const T& d_value,
-        [[maybe_unused]] uint64_t oracle_timestamp,
-        [[maybe_unused]] const T& lp_floor = T(0),
-        [[maybe_unused]] const T& vp_boosted = T(0)
+        [[maybe_unused]] uint64_t oracle_timestamp
     ) {
         if (kind == PolicyKind::None) return;
         if (kind != PolicyKind::Compiled) {
@@ -334,9 +289,7 @@ public:
             virtual_price,
             xcp_profit,
             d_value,
-            oracle_timestamp,
-            lp_floor,
-            vp_boosted
+            oracle_timestamp
         };
         ChallengeFeePolicy<T>::update_state(
             compiled_state, research, params, config, update

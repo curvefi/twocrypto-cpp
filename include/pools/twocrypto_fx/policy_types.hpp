@@ -71,14 +71,8 @@ struct PolicyResearchContext {
     T price_feed{T(0)};
     double price_feed_timestamp{0}; // Unix seconds; reports may have subsecond timestamps.
     double report_max_age_s{0};
-    // Research: what an on-chain policy could read back from pool storage when it is asked for the target. The
-    // pool sets them just before the call: its xp at the current price scale; its re-peg headroom
-    // 1 - lp_xcp_profit / vp_boosted, the largest share of value its gate lets one step lose; and the already
-    // written last_prices and xcp_profit. Unset: 0, -1, 0, 0.
-    std::array<T, 2> pool_xp{T(0), T(0)};
-    T pool_headroom{T(-1)};
+    // The pool's last_prices, written just before it asks a compiled policy for the price-scale target.
     T pool_last_prices{T(0)};
-    T pool_xcp_profit{T(0)};
 };
 
 template <typename T>
@@ -91,8 +85,6 @@ struct PolicyUpdate {
     const T& xcp_profit;
     const T& D;
     uint64_t oracle_timestamp;
-    T lp_floor{0};    // research: the LP-protected vp floor (lp_xcp_profit)
-    T vp_boosted{0};  // research: vp over the supply less the burnable donation shares
 };
 
 // Effective report fee terms of a compiled policy for one input coin
@@ -105,10 +97,6 @@ struct PolicyReportTerms {
     T base{};
     T capture{};
     T fallback{};
-    T base2{};     // second capture tier (capture2 > 0): the fresh fee is the lower of the two tiers
-    T capture2{};
-    T margin{};    // margin model (margin > 0): the fresh fee is max(base, edge - margin), the trader keeps `margin`
-    T cap{};       // cap of the fresh fee and of the base (>= fallback)
 };
 
 } // namespace twocrypto_fx

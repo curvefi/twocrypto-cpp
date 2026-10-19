@@ -28,42 +28,6 @@ namespace compiled_detail {
 
 #ifdef TWOCRYPTO_POLICY_HEADER
 template <typename Policy, typename T, typename = void>
-struct HasRepegReserve : std::false_type {};
-template <typename Policy, typename T>
-struct HasRepegReserve<Policy, T, std::void_t<decltype(Policy::repeg_reserve(
-    std::declval<const PolicyConfig<T>&>()))>> : std::true_type {};
-
-template <typename Policy, typename T, typename = void>
-struct HasRepegFloor : std::false_type {};
-template <typename Policy, typename T>
-struct HasRepegFloor<Policy, T, std::void_t<decltype(Policy::repeg_floor(
-    std::declval<const typename Policy::State&>(), std::declval<const PolicyConfig<T>&>(),
-    std::declval<const T&>()))>> : std::true_type {};
-
-template <typename Policy, typename T, typename = void>
-struct HasRepegMinProgress : std::false_type {};
-template <typename Policy, typename T>
-struct HasRepegMinProgress<Policy, T, std::void_t<decltype(Policy::repeg_min_progress(
-    std::declval<const PolicyConfig<T>&>()))>> : std::true_type {};
-
-template <typename Policy, typename T, typename = void>
-struct HasLiquidityFee : std::false_type {};
-template <typename Policy, typename T>
-struct HasLiquidityFee<Policy, T, std::void_t<decltype(Policy::get_liquidity_fee(
-    std::declval<const typename Policy::State&>(), std::declval<const PolicyConfig<T>&>(),
-    std::declval<const PolicyPoolConfig<T>&>(), std::declval<const PolicyResearchContext<T>&>(),
-    std::declval<const std::array<T,2>&>(), std::declval<const T&>()))>> : std::true_type {};
-
-template <typename Policy, typename T, typename = void>
-struct HasPreparedFee : std::false_type {};
-
-template <typename Policy, typename T>
-struct HasPreparedFee<Policy, T, std::void_t<decltype(Policy::prepare_fee(
-    std::declval<const typename Policy::State&>(), std::declval<const PolicyConfig<T>&>(),
-    std::declval<const PolicyPoolConfig<T>&>(), std::declval<const PolicyResearchContext<T>&>()))>>
-    : std::true_type {};
-
-template <typename Policy, typename T, typename = void>
 struct HasLivePoolFee : std::false_type {};
 
 template <typename Policy, typename T>

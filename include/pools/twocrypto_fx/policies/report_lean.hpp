@@ -127,11 +127,11 @@ template <typename T> struct ChallengeFeePolicy {
         const bool usable = r.price > T(0) && age >= -FUTURE_WINDOW_S && age < relax;
         const T weight = usable ? T(std::sqrt(std::clamp(age / relax, 0.0, 1.0))) : T(1);
         const T F = p.params[2];
-        return {usable, r.price, weight, p.params[0], p.params[1], F, T(0), T(0), T(0), F};
+        return {usable, r.price, weight, p.params[0], p.params[1], F};
     }
     // Fee of a fresh report at whole-trade edge e: the capture hinge above the base, capped at F.
     static T fresh_fee(const PolicyReportTerms<T> &t, const T &edge) {
-        return std::min(t.cap, t.base + t.capture * std::max(T(0), edge - t.base));
+        return std::min(t.fallback, t.base + t.capture * std::max(T(0), edge - t.base));
     }
     // Whole-trade edge of the swap old -> xp against the report, normalized by the output value (both legs valued at
     // the report: e = 1 - input / output). Vyper: the same on the swap's dx / dy at price_scale.

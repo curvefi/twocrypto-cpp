@@ -35,7 +35,8 @@ namespace arb::pools::twocrypto_fx {
 template <typename T> struct ChallengeFeePolicy {
     static_assert(std::is_floating_point_v<T>, "report_lean is a floating-point research model");
 
-    // Bounds are YBOraclizedPolicy._set_policy_config's; report_lifetime_s also admits -1 (research only, see obs above).
+    // Bounds are YBOraclizedPolicy._set_policy_config's, except two research extensions: step_cap admits up to 3% (the
+    // Vyper caps it at 60 bp; six 2026-10-18 top-100 slices use 80 bp) and report_lifetime_s admits -1 (see obs above).
     inline static constexpr PolicyDescriptor<9> DESCRIPTOR{"report_lean", {{
         {"base_fee", 0, "relative", 0.003L, 0.00001L, 0.1L, 0.00001L},
         {"capture", 1, "dimensionless", 0.80L, 0.0L, 1.0L, 0.005L},
@@ -44,7 +45,7 @@ template <typename T> struct ChallengeFeePolicy {
         {"fast_half_life_s", 4, "seconds", 3600.0L, 600.0L, 604800.0L, 1.0L},
         {"slow_half_life_s", 5, "seconds", 10800.0L, 600.0L, 604800.0L, 1.0L},
         {"trend_gate", 6, "relative", 0.008L, 0.0L, 0.1L, 0.0001L},
-        {"step_cap", 7, "relative", 0.0012L, 0.00001L, 0.006L, 0.00001L},
+        {"step_cap", 7, "relative", 0.0012L, 0.00001L, 0.03L, 0.00001L},
         {"report_lifetime_s", 8, "seconds", 5400.0L, -1.0L, 14400.0L, 1.0L},
     }}};
     static constexpr std::size_t PARAM_COUNT = DESCRIPTOR.size();

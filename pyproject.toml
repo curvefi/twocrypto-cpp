@@ -10,7 +10,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-test = ["pytest==8.4.1"]
+test = ["pytest==9.0.3"]
 
 [project.scripts]
 twocrypto-parity = "twocrypto_parity.cpp_pool_runner:main"

@@ -1367,10 +1367,6 @@ public:
         const bool target_profit_ready = vp_boosted > lp_xcp_profit;
         const bool target_block_ready = last_ts < block_timestamp;
         if (target_profit_ready && target_block_ready) {
-            if constexpr (!std::is_same_v<T, uint256>) {
-                // What an on-chain policy would read back from the pool at this point.
-                policy.research.pool_last_prices = last_prices;
-            }
             const T p_policy = _policy_price_target(block_timestamp, price_oracle);
             const auto actuator_preview = preview_price_scale_actuator(
                 p_policy,

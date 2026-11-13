@@ -71,8 +71,8 @@ struct PolicyResearchContext {
     T price_feed{T(0)};
     double price_feed_timestamp{0}; // Unix seconds; reports may have subsecond timestamps.
     double report_max_age_s{0};
-    // The pool's last_prices, written just before it asks a compiled policy for the price-scale target.
-    T pool_last_prices{T(0)};
+    // Research: the price-scale driver observes a delivered report times this ratio (1: the report itself).
+    T driver_ratio{T(1)};
 };
 
 template <typename T>

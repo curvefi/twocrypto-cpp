@@ -5,9 +5,10 @@
 //
 // Price scale (trend-gated dual EMA, "arch A"):
 //   obs     = the report while younger than report_lifetime_s (the admissible one delivered with this touch, else the
-//             stored one), else the pool's post-trade last_prices; report_lifetime_s < 0 (research only, no on-chain
-//             counterpart): the report delivered with this touch, else last_prices
-//   fast    = EMA(obs, fast_half_life_s), slow = EMA(obs, slow_half_life_s), obs clamped to [scale / 2, 2 scale]
+//             stored one), else the pool's spot stored by the last update (Vyper: _observation); report_lifetime_s < 0
+//             (research only, no on-chain counterpart): the report delivered with this touch, else that spot;
+//             clamped to [scale / 2, 2 scale]; research only: a report times the driver_ratio stored with it (1 on chain)
+//   fast    = EMA(obs, fast_half_life_s), slow = EMA(obs, slow_half_life_s)
 //   w       = min(1, |fast / slow - 1| / trend_gate)                      (0 when trend_gate = 0)
 //   target  = fast + w (obs - fast)
 //   move    = min(|target - scale| / 2, step_cap * scale)
@@ -67,6 +68,7 @@ template <typename T> struct ChallengeFeePolicy {
     struct Report {
         T price{T(0)};
         double timestamp{0};  // observation time (seconds), never the submission time
+        T driver_ratio{T(1)};  // research (Vyper: none, 1): the driver observes price * driver_ratio
     };
     struct State {
         // Committed pool state at the last update (Vyper: State.xp, State.D, State.price_scale), at price_scale.
@@ -76,7 +78,8 @@ template <typename T> struct ChallengeFeePolicy {
         // Last admitted report (Vyper: self.report); a delivered report must be strictly newer.
         Report report{};
         // EMA memory (Vyper: State.last_update_ts, State.last_prices, State.fast_ema, State.slow_ema): `last_prices`
-        // is the observation of the last update, which the EMAs integrate over [last_update_ts, now].
+        // is the pool's spot after the last update's operation, which a reportless touch integrates over
+        // [last_update_ts, now].
         uint64_t last_update_ts{0};
         T last_prices{T(0)};
         T fast_ema{T(0)};
@@ -120,15 +123,15 @@ template <typename T> struct ChallengeFeePolicy {
     // This touch's admitted report price, 0 when none.
     static T delivered(const State &s, const PolicyResearchContext<T> &x) { return admissible(s.report, x) ? x.price_feed : T(0); }
     // The report price the price-scale driver observes on this touch, 0 when it observes last_prices. Vyper:
-    // _observed_price, the stored report (deliver_oracle_report stores it before the pool operation) while
+    // _observed_report, the stored report (deliver_oracle_report stores it before the pool operation) while
     // report_age < DriverConfig.report_lifetime, the age clamped at 0 for an observation after the block; lifetime 0 never
     // observes a report. A negative lifetime (research only) observes the report delivered with this touch alone.
     static T driver_report(const State &s, const PolicyConfig<T> &p, const PolicyResearchContext<T> &x) {
         const double lifetime = double(p.params[8]);
-        if (lifetime < 0) return delivered(s, x);
-        const Report r = admissible(s.report, x) ? Report{x.price_feed, x.price_feed_timestamp} : s.report;
+        if (lifetime < 0) return delivered(s, x) * x.driver_ratio;
+        const Report r = admissible(s.report, x) ? Report{x.price_feed, x.price_feed_timestamp, x.driver_ratio} : s.report;
         const double age = double(x.block_timestamp) - r.timestamp;
-        return r.price > T(0) && age >= -FUTURE_WINDOW_S && std::max(0.0, age) < lifetime ? r.price : T(0);
+        return r.price > T(0) && age >= -FUTURE_WINDOW_S && std::max(0.0, age) < lifetime ? r.price * r.driver_ratio : T(0);
     }
 
     // ---------------------------------------------------------------- fee
@@ -229,10 +232,13 @@ template <typename T> struct ChallengeFeePolicy {
 
     // ---------------------------------------------------------------- price scale
     // EMA of `obs` held over dt = now - last_update_ts. Vyper: alpha = _wad_exp(-dt * LN2_WAD // half_life);
-    // ema = (clamp(obs) * (PRECISION - alpha) + ema * alpha) // PRECISION; dt = 0 leaves the EMA unchanged.
+    // ema = (obs * (PRECISION - alpha) + ema * alpha) // PRECISION; dt = 0 leaves the EMA unchanged.
     static T ema(const T &old, const T &obs, const T &alpha) { return obs * (T(1) - alpha) + old * alpha; }
-    // The observation a touch integrates, clamped to [scale / 2, 2 scale] like YBTwocryptoPolicy's EMAs.
-    static T clamp_obs(const T &obs, const T &scale) { return std::clamp(obs, scale / T(2), scale * T(2)); }
+    // What the EMAs and the target observe: the driver's report, else the spot stored by the last update, clamped to
+    // [scale / 2, 2 scale] at the stored scale (Vyper: _observation).
+    static T observation(const State &s, const T &report) {
+        return std::clamp(report > T(0) ? report : s.last_prices, s.price_scale / T(2), s.price_scale * T(2));
+    }
     // Both EMAs as of `now` with observation `obs`; the target call and the update of a touch share dt, so the alphas
     // are computed once.
     static std::array<T, 2> emas(const State &s, const T &obs, uint64_t now, const PolicyConfig<T> &p) {
@@ -242,8 +248,7 @@ template <typename T> struct ChallengeFeePolicy {
         if (a.dt != dt || a.fast_hl != p.params[4] || a.slow_hl != p.params[5]) {
             a = {dt, p.params[4], p.params[5], std::exp(-T(LN2) * T(dt) / p.params[4]), std::exp(-T(LN2) * T(dt) / p.params[5])};
         }
-        const T o = clamp_obs(obs, s.price_scale);
-        return {ema(s.fast_ema, o, a.fast), ema(s.slow_ema, o, a.slow)};
+        return {ema(s.fast_ema, obs, a.fast), ema(s.slow_ema, obs, a.slow)};
     }
 
     // A pure read of the committed state (on chain a staticcall from tweak_price): update_state integrates the same
@@ -251,16 +256,13 @@ template <typename T> struct ChallengeFeePolicy {
     static T get_price_scale(const State &s, PolicyResearchContext<T> &x, const PolicyConfig<T> &p, const PolicyPoolConfig<T> &) {
         const T scale = s.price_scale;
         if (scale == T(0)) return T(0);
-        const T report = driver_report(s, p, x);
-        // This touch's observation: the report, else the pool's post-trade last_prices (Vyper: staticcall pool.last_prices()).
-        const T obs = report > T(0) ? report : x.pool_last_prices > T(0) ? x.pool_last_prices : s.last_prices;
+        const T obs = observation(s, driver_report(s, p, x));
         const auto [fast, slow] = emas(s, obs, x.block_timestamp, p);
-        const T latest = obs;
-        // Trend gate: the fast EMA in a range, this touch's observation (report or last_prices) once EMAs are trend_gate apart.
+        // Trend gate: the fast EMA in a range, the observation once the EMAs are trend_gate apart.
         T target = fast;
-        if (p.params[6] > T(0) && latest > T(0) && slow > T(0)) {
+        if (p.params[6] > T(0) && obs > T(0) && slow > T(0)) {
             const T w = std::min(T(1), std::abs(fast / slow - T(1)) / p.params[6]);
-            target = fast + w * (latest - fast);
+            target = fast + w * (obs - fast);
         }
         // Step cap per touch (half-gap pursuit), scaled up by the pool's 1/5 (Vyper: min(gap // 2, scale * step_cap // PRECISION) * 5).
         const T move = std::min(T(PURSUIT_GAIN) * std::abs(target - scale), scale * p.params[7]);
@@ -273,18 +275,16 @@ template <typename T> struct ChallengeFeePolicy {
         const T delivered_price = delivered(s, x);
         const T report = driver_report(s, p, x);
         const uint64_t now = x.block_timestamp;
-        if (delivered_price > T(0)) s.report = {delivered_price, x.price_feed_timestamp};
-        // This touch's observation: the report, else the pool's post-trade last_prices.
-        const T observed = report > T(0) ? report : u.last_prices;
+        if (delivered_price > T(0)) s.report = {delivered_price, x.price_feed_timestamp, x.driver_ratio};
         if (s.price_scale == T(0)) {
             s.fast_ema = s.slow_ema = u.price_oracle;  // first touch: both EMAs start at the pool's oracle
         } else {
-            const auto e = emas(s, observed, now, p);   // clamped at the scale the EMAs ran at
+            const auto e = emas(s, observation(s, report), now, p);  // the previous spot and scale
             s.fast_ema = e[0];
             s.slow_ema = e[1];
         }
         s.last_update_ts = now;
-        s.last_prices = observed;
+        s.last_prices = u.last_prices;
         s.price_scale = u.price_scale;
         s.xp = u.xp;
         s.D = u.D;

@@ -7,7 +7,8 @@
 //   obs     = the report while younger than report_lifetime_s (the admissible one delivered with this touch, else the
 //             stored one), else the pool's spot stored by the last update (Vyper: _observation); report_lifetime_s < 0
 //             (research only, no on-chain counterpart): the report delivered with this touch, else that spot;
-//             clamped to [scale / 2, 2 scale]; research only: a report times the driver_ratio stored with it (1 on chain)
+//             clamped to [scale / 2, 2 scale]; research only: a report times the driver_ratio stored with it and the
+//             context's driver_scale (both 1 on chain)
 //   fast    = EMA(obs, fast_half_life_s), slow = EMA(obs, slow_half_life_s)
 //   w       = min(1, |fast / slow - 1| / trend_gate)                      (0 when trend_gate = 0)
 //   target  = fast + w (obs - fast)
@@ -128,10 +129,10 @@ template <typename T> struct ChallengeFeePolicy {
     // observes a report. A negative lifetime (research only) observes the report delivered with this touch alone.
     static T driver_report(const State &s, const PolicyConfig<T> &p, const PolicyResearchContext<T> &x) {
         const double lifetime = double(p.params[8]);
-        if (lifetime < 0) return delivered(s, x) * x.driver_ratio;
+        if (lifetime < 0) return delivered(s, x) * x.driver_ratio * x.driver_scale;
         const Report r = admissible(s.report, x) ? Report{x.price_feed, x.price_feed_timestamp, x.driver_ratio} : s.report;
         const double age = double(x.block_timestamp) - r.timestamp;
-        return r.price > T(0) && age >= -FUTURE_WINDOW_S && std::max(0.0, age) < lifetime ? r.price * r.driver_ratio : T(0);
+        return r.price > T(0) && age >= -FUTURE_WINDOW_S && std::max(0.0, age) < lifetime ? r.price * r.driver_ratio * x.driver_scale : T(0);
     }
 
     // ---------------------------------------------------------------- fee

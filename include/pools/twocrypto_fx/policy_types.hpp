@@ -73,6 +73,9 @@ struct PolicyResearchContext {
     double report_max_age_s{0};
     // Research: the price-scale driver observes a delivered report times this ratio (1: the report itself).
     T driver_ratio{T(1)};
+    // Research: the driver observes every report, delivered or stored, times this factor as of the touch (1: unchanged);
+    // e.g. 1 / the crvUSD rate for a driver in crvUSD.
+    T driver_scale{T(1)};
 };
 
 template <typename T>

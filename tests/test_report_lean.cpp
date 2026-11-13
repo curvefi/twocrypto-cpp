@@ -228,6 +228,8 @@ int main() {
         P::update_state(t, x, p, c, {t.xp, 2000, 2000, 2000, 1, 1, t.D, x.block_timestamp});
         x.price_feed = 0, x.driver_ratio = 1, x.block_timestamp = t0 + 24;
         require(P::driver_report(t, p, x) == 2100 && P::report_terms(t, p, c, x, 0).price == 1050, "stored: the ratio of its admission");
+        x.driver_scale = 0.5;  // the touch's factor applies to the stored report too; the fee terms keep the report
+        require(P::driver_report(t, p, x) == 1050 && P::report_terms(t, p, c, x, 0).price == 1050, "driver_scale of the touch");
     }
     {   // Through TwoCryptoPool: a report at the pool's price (2000, so the delivering swap steps nothing) arrives with a
         // swap, then one reportless touch. Dust either way after an idle hour observes the stored report while 3600 s < L,
